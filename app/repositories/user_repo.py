@@ -25,6 +25,12 @@ class UserRepository:
         stmt = select(User).where(User.id == user_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
+    
+    async def get_by_passcode_hash(self,passcode_hash: str) -> User | None:
+        stmt = select(User).where(User.passcode_hash == passcode_hash)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
 
     async def get_all(self) -> list[User]:
         stmt = select(User)

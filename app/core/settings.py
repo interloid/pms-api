@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     DATABASE_URL: str
+    
+    SESSION_EXPIRE_DAYS: int = 7
 
     model_config = SettingsConfigDict(
         env_file=".env",

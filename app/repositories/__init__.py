@@ -1,13 +1,15 @@
-from app.repositories.session_repo import RefreshTokenRepository
-from app.repositories.role_repo import RoleRepository
-from app.repositories.tenant_repo import TenantRepository
+from app.repositories.session_repo import SessionRepository
+from app.repositories.product_image_repo import ProductImageRepository
+from app.repositories.product_repo import ProductRepository
 from app.repositories.user_repo import UserRepository
-from app.repositories.user_role_repo import UserRoleRepository
+from app.repositories.category_repo import CategoryRepository
+from app.repositories.user_identity_repo import UserIdentityRepository
 
 __all__ = [
-    "RefreshTokenRepository",
-    "RoleRepository",
-    "TenantRepository",
+    "SessionRepository",
+    "ProductImageRepository",
+    "ProductRepository",
     "UserRepository",
-    "UserRoleRepository",
+    "CategoryRepository",
+    "UserIdentityRepository"
 ]

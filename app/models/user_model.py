@@ -48,8 +48,10 @@ class User(BaseEntity):
     )
     
     passcode_hash: Mapped[str | None] = mapped_column(
-        String(255),
+        String(64),
+        unique=True,
         nullable=True,
+        index=True,
     )
     
     sessions: Mapped[list["Session"]] = relationship(

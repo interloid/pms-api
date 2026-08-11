@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user_identity_model import UserIdentity
 
-
 class UserIdentityRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
