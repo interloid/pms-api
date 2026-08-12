@@ -11,3 +11,8 @@ class ProductStatusEnum(StrEnum):
     OUT_OF_STOCK = "Out of Stock"
     ARCHIVED = "Archived"
     
+class OAuthProviderEnum(StrEnum):
+    GOOGLE = "google"
+    MICROSOFT = "microsoft"
+    GITHUB = "github"
+    

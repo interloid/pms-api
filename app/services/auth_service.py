@@ -1,13 +1,16 @@
+from typing import Any
 import hmac
+from secrets import token_urlsafe
+from redis.asyncio import Redis
 from datetime import timedelta
-from typing import NoReturn
+from fastapi import Request
 from uuid import uuid4, UUID
+from urllib.parse import urlencode
 
-from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
-from slugify import slugify
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.oauth.config import OAUTH_PROVIDERS
+from app.core.oauth.state import generate_oauth_state
 from app.core.logging import get_logger
 from app.core.security import (
     hash_password,
@@ -19,7 +22,7 @@ from app.exceptions.custom import (
     AppException,
     ConflictException,
     ForbiddenException,
-    InternalServerException,
+    NotFoundException,
     UnauthorizedException,
 )
 from app.models.session_model import Session
@@ -31,7 +34,9 @@ from app.repositories import (
    UserRepository,
    ProductRepository,
    ProductImageRepository,
-   CategoryRepository
+   CategoryRepository,
+   OAuthStateRepository,
+   
 )
 from app.schemas.auth_schema import (
     LoginRequest,
@@ -42,16 +47,18 @@ from app.schemas.response import ApiResponse
 from app.schemas.session_schema import SessionResponse
 from app.schemas.user_schema import UserResponse
 from app.utils.helpers import utc_now
+from app.core.oauth.client import get_oauth_client
 
 logger = get_logger(__name__)
 
 
 class AuthService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, redis: Redis | None = None):
         self.db = db
         self.user_repo = UserRepository(db)
         self.session_repo = SessionRepository(db)
         self.user_identity_repo = UserIdentityRepository(db)
+        self.oauth_state_repo = OAuthStateRepository(redis)
 
     async def _rollback(self) -> None:
         await self.db.rollback()
@@ -250,3 +257,224 @@ class AuthService:
                 ),
             ),
         )
+        
+        
+    async def start_oauth(self, provider: str) -> str:
+        
+        try:
+            config = OAUTH_PROVIDERS.get(provider)
+
+            if config is None:
+                logger.warning(
+                    "Unsupported OAuth provider | provider=%s",
+                    provider,
+                )
+                raise NotFoundException(
+                    message="OAuth provider not supported",
+                )
+
+            state = generate_oauth_state()
+
+            await self.oauth_state_repo.create(
+                state=state,
+                provider=provider,
+                ttl=settings.OAUTH_STATE_EXPIRE_SECONDS,
+            )
+
+            params = {
+                "client_id": config.client_id,
+                "redirect_uri": config.redirect_uri,
+                "response_type": "code",
+                "scope": " ".join(config.scopes),
+                "state": state,
+            }
+
+            authorization_url = (
+                f"{config.authorization_url}?{urlencode(params)}"
+            )
+
+            logger.info(
+                "OAuth authorization started | provider=%s",
+                provider,
+            )
+
+            return authorization_url
+
+        except AppException:
+            raise
+
+        except Exception:
+            logger.exception(
+                "Unexpected error while starting OAuth | provider=%s",
+                provider,
+            )
+            raise    
+        
+        
+    async def validate_oauth_state(
+        self,
+        provider: str,
+        state: str,
+    ) -> None:
+        stored_provider = await self.oauth_state_repo.consume(state)
+
+        if stored_provider is None:
+            logger.warning(
+                "Invalid or expired OAuth state | provider=%s",
+                provider,
+            )
+            raise UnauthorizedException(
+                message="Invalid or expired OAuth state",
+            )
+
+        if stored_provider != provider:
+            logger.warning(
+                "OAuth provider mismatch | expected=%s actual=%s",
+                stored_provider,
+                provider,
+            )
+            raise UnauthorizedException(
+                message="Invalid OAuth state",
+            )
+            
+    
+    async def oauth_callback(
+        self,
+        provider: str,
+        code: str,
+        state: str,
+    ):
+        try:
+            await self.validate_oauth_state(
+                provider=provider,
+                state=state,
+            )
+            
+            config = OAUTH_PROVIDERS.get(provider)
+
+            if config is None:
+                raise NotFoundException(
+                    message="OAuth provider not supported",
+                )
+
+            client = get_oauth_client(provider)
+
+            token = await client.fetch_token(
+                url=config.token_url,
+                code=code,
+                redirect_uri=config.redirect_uri,
+            )
+            
+            userinfo_response = await client.get(config.userinfo_url)
+            
+            userinfo_response.raise_for_status()
+            
+            userinfo = userinfo_response.json()
+            
+            identity = await self.user_identity_repo.get_by_provider_identity(
+                provider=provider,
+                provider_user_id=userinfo["sub"],
+            )
+
+            if identity is not None:
+                user = await self.user_repo.get_by_id(identity.user_id)
+
+                if user is None:
+                    raise NotFoundException(
+                        message="User associated with OAuth identity not found",
+                    )
+
+            else:
+                user = await self.user_repo.get_by_email(
+                    userinfo["email"],
+                )
+
+                if user is None:
+                    user = User(
+                        email=userinfo["email"],
+                        first_name=userinfo.get("given_name", ""),
+                        last_name=userinfo.get("family_name", ""),
+                    )
+
+                    user = await self.user_repo.create(user)
+
+                identity = UserIdentity(
+                    user_id=user.id,
+                    provider=provider,
+                    provider_user_id=userinfo["sub"],
+                    email=userinfo["email"],
+                )
+
+                await self.user_identity_repo.create(identity)
+
+            logger.info(
+                "OAuth user info | sub=%s email=%s",
+                userinfo["sub"],
+                userinfo["email"],
+            )
+            
+            session = Session(
+                user_id=user.id,
+                expires_at=utc_now()
+                + timedelta(days=settings.SESSION_EXPIRE_DAYS),
+            )
+
+            await self.session_repo.create(session)
+
+            await self.db.commit()
+
+            return ApiResponse(
+                message=f"{provider.capitalize()} authentication successful",
+                data={
+                    "session_id": str(session.id),
+                },
+            )
+
+        except AppException:
+            await self._rollback()
+            raise
+
+        except Exception:
+            await self._rollback()
+
+            logger.exception(
+                "Unexpected OAuth callback error | provider=%s",
+                provider,
+            )
+
+            raise
+    
+    async def get_google_user_info(
+        self,
+        access_token: str,
+    ) -> dict[str, Any]:
+        
+        try:
+            
+            client = get_oauth_client()
+
+            response = await client.get(
+                "https://openidconnect.googleapis.com/v1/userinfo",
+                token={
+                    "access_token": access_token,
+                    "token_type": "Bearer",
+                },
+            )
+
+            response.raise_for_status()
+
+            user_info = response.json()
+
+            logger.info(
+                "Google user information retrieved successfully",
+            )
+
+            return user_info
+
+        except Exception:
+            logger.exception(
+                "Failed to retrieve Google user information",
+            )
+            raise
+    
+                
