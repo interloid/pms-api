@@ -11,7 +11,7 @@ class OAuthStateRepository:
         provider: str,
         ttl: int,
     ) -> None:
-        
+
         key = f"oauth:state:{state}"
 
         await self.redis.set(key, provider, ex=ttl)
@@ -20,7 +20,7 @@ class OAuthStateRepository:
         self,
         state: str,
     ) -> str | None:
-        
+
         key = f"oauth:state:{state}"
 
         provider = await self.redis.get(key)
@@ -34,5 +34,3 @@ class OAuthStateRepository:
             return provider.decode()
 
         return provider
-    
-    

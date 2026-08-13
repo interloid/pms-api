@@ -1,7 +1,7 @@
 from urllib.parse import urlencode
 
-from app.core.settings import settings
 from app.core.oauth.config import GOOGLE_CONFIG
+from app.core.settings import settings
 
 
 def build_google_authorization_url(state: str) -> str:
@@ -16,4 +16,3 @@ def build_google_authorization_url(state: str) -> str:
     }
 
     return f"{GOOGLE_CONFIG.authorization_url}?{urlencode(params)}"
-

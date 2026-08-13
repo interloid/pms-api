@@ -1,7 +1,5 @@
 import asyncio
 
-from sqlalchemy import select
-
 from app.core.security import hash_password
 from app.db.database import engine
 from app.db.session import SessionLocal

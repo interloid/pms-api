@@ -2,7 +2,6 @@ from typing import Any
 
 from app.schemas.response import ErrorResponse
 
-
 AUTH_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {
         "model": ErrorResponse,

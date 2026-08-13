@@ -1,22 +1,21 @@
-from typing import TYPE_CHECKING
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import String, Integer,Text, Numeric, CheckConstraint, ForeignKey
+from sqlalchemy import CheckConstraint, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import BaseEntity
 
 if TYPE_CHECKING:
-    from app.models.product_image_model import ProductImage
     from app.models.category_model import Category
-
+    from app.models.product_image_model import ProductImage
 
 
 class Product(BaseEntity):
     __tablename__ = "products"
-    
+
     __table_args__ = (
         CheckConstraint(
             "price >= 0",
@@ -27,7 +26,7 @@ class Product(BaseEntity):
             name="ck_products_stock_non_negative",
         ),
     )
-    
+
     name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
@@ -43,22 +42,22 @@ class Product(BaseEntity):
         Numeric(12, 2),
         nullable=False,
     )
-    
+
     stock: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
     )
-    
+
     status: Mapped[str] = mapped_column(
-            String(50),
-            nullable=False,
-        )
+        String(50),
+        nullable=False,
+    )
 
     description: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
-    
+
     category_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("categories.id"),
@@ -71,7 +70,7 @@ class Product(BaseEntity):
         back_populates="product",
         cascade="all, delete-orphan",
     )
-    
+
     category: Mapped["Category"] = relationship(
         "Category",
         back_populates="products",

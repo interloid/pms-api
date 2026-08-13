@@ -24,5 +24,4 @@
 #     service = UserService(db)
 
 #     return True #await service.get_users()
-    
-    
+

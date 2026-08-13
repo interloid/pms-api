@@ -1,27 +1,23 @@
-from typing import Any
-import hmac
-from secrets import token_urlsafe
-from redis.asyncio import Redis
 from datetime import timedelta
-from fastapi import Request
-from uuid import uuid4, UUID
+from typing import Any
 from urllib.parse import urlencode
+from uuid import UUID
 
+from authlib.integrations.httpx_client import AsyncOAuth2Client
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
+from app.core.oauth.client import get_oauth_client
 from app.core.oauth.config import OAUTH_PROVIDERS
 from app.core.oauth.state import generate_oauth_state
-from app.core.logging import get_logger
 from app.core.security import (
-    hash_password,
     hash_passcode,
     verify_password,
 )
 from app.core.settings import settings
 from app.exceptions.custom import (
     AppException,
-    ConflictException,
-    ForbiddenException,
     NotFoundException,
     UnauthorizedException,
 )
@@ -29,14 +25,10 @@ from app.models.session_model import Session
 from app.models.user_identity_model import UserIdentity
 from app.models.user_model import User
 from app.repositories import (
-   SessionRepository,
-   UserIdentityRepository,
-   UserRepository,
-   ProductRepository,
-   ProductImageRepository,
-   CategoryRepository,
-   OAuthStateRepository,
-   
+    OAuthStateRepository,
+    SessionRepository,
+    UserIdentityRepository,
+    UserRepository,
 )
 from app.schemas.auth_schema import (
     LoginRequest,
@@ -44,10 +36,8 @@ from app.schemas.auth_schema import (
     PasscodeLoginRequest,
 )
 from app.schemas.response import ApiResponse
-from app.schemas.session_schema import SessionResponse
 from app.schemas.user_schema import UserResponse
 from app.utils.helpers import utc_now
-from app.core.oauth.client import get_oauth_client
 
 logger = get_logger(__name__)
 
@@ -63,33 +53,31 @@ class AuthService:
     async def _rollback(self) -> None:
         await self.db.rollback()
 
-
     async def login(self, login_data: LoginRequest) -> ApiResponse[LoginResponse]:
 
         try:
-            
             user = await self.user_repo.get_by_email(login_data.email)
             if user is None:
-                logger.warning("Invalid email or password | email=%s",login_data.email)
+                logger.warning("Invalid email or password | email=%s", login_data.email)
                 raise UnauthorizedException(message="Invalid email or password")
-            
+
             if user.hashed_password is None:
-                logger.warning("Invalid email or password | email=%s",login_data.email)
+                logger.warning("Invalid email or password | email=%s", login_data.email)
                 raise UnauthorizedException(message="Invalid email or password")
-            
-            if not verify_password(login_data.password,user.hashed_password):
-                logger.warning("Invalid email or password | email=%s",login_data.email)
+
+            if not verify_password(login_data.password, user.hashed_password):
+                logger.warning("Invalid email or password | email=%s", login_data.email)
                 raise UnauthorizedException(message="Invalid email or password")
-            
+
             if not user.is_active:
-                logger.warning("Invalid email or password | email=%s",login_data.email)
+                logger.warning("Invalid email or password | email=%s", login_data.email)
                 raise UnauthorizedException(message="Invalid email or password")
-            
+
             session = Session(
-                user_id = user.id,
-                expires_at = utc_now() + timedelta(days=settings.SESSION_EXPIRE_DAYS)
+                user_id=user.id,
+                expires_at=utc_now() + timedelta(days=settings.SESSION_EXPIRE_DAYS),
             )
-            
+
             await self.session_repo.create(session)
 
             await self.db.commit()
@@ -117,22 +105,22 @@ class AuthService:
             ),
         )
 
-    
-
     async def logout(self, session_id: UUID):
 
         try:
-            
             session = await self.session_repo.get_by_id(session_id)
             if session is None:
-                logger.warning("Logout requested for non-existent session session_id=%s",session_id)
+                logger.warning(
+                    "Logout requested for non-existent session session_id=%s",
+                    session_id,
+                )
                 return ApiResponse[None](
                     message="Logged out successfully",
                 )
-            
-            await self.session_repo.delete(session)      
+
+            await self.session_repo.delete(session)
             await self.db.commit()
-            
+
             logger.info(
                 "User logged out successfully | session_id=%s",
                 session_id,
@@ -151,27 +139,29 @@ class AuthService:
             message="Logged out successfully",
         )
 
-
     async def get_current_session(self, session_id: UUID):
-        
+
         try:
-            session = await self.session_repo.get_active_by_id(session_id,now=utc_now())
-            
-            if session is None:
-                logger.warning("Invalid or expired session | session_id=%s",
-                session_id,
+            session = await self.session_repo.get_active_by_id(
+                session_id, now=utc_now()
             )
+
+            if session is None:
+                logger.warning(
+                    "Invalid or expired session | session_id=%s",
+                    session_id,
+                )
                 raise UnauthorizedException(message="Invalid or expired session")
-            
+
             user = await self.user_repo.get_by_id(session.user_id)
-            
+
             if user is None:
                 logger.warning(
                     "User not found for session | session_id=%s",
                     session_id,
                 )
                 raise UnauthorizedException(message="Invalid session")
-            
+
             if not user.is_active:
                 logger.warning(
                     "Inactive user | user_id=%s",
@@ -201,8 +191,6 @@ class AuthService:
                 ),
             ),
         )
-        
-
 
     async def login_passcode(self, login_data: PasscodeLoginRequest):
 
@@ -233,7 +221,6 @@ class AuthService:
             await self.session_repo.create(session)
 
             await self.db.commit()
-            
 
         except AppException:
             await self._rollback()
@@ -257,10 +244,9 @@ class AuthService:
                 ),
             ),
         )
-        
-        
+
     async def start_oauth(self, provider: str) -> str:
-        
+
         try:
             config = OAUTH_PROVIDERS.get(provider)
 
@@ -289,9 +275,7 @@ class AuthService:
                 "state": state,
             }
 
-            authorization_url = (
-                f"{config.authorization_url}?{urlencode(params)}"
-            )
+            authorization_url = f"{config.authorization_url}?{urlencode(params)}"
 
             logger.info(
                 "OAuth authorization started | provider=%s",
@@ -308,9 +292,8 @@ class AuthService:
                 "Unexpected error while starting OAuth | provider=%s",
                 provider,
             )
-            raise    
-        
-        
+            raise
+
     async def validate_oauth_state(
         self,
         provider: str,
@@ -336,8 +319,7 @@ class AuthService:
             raise UnauthorizedException(
                 message="Invalid OAuth state",
             )
-            
-    
+
     async def oauth_callback(
         self,
         provider: str,
@@ -349,7 +331,7 @@ class AuthService:
                 provider=provider,
                 state=state,
             )
-            
+
             config = OAUTH_PROVIDERS.get(provider)
 
             if config is None:
@@ -359,21 +341,35 @@ class AuthService:
 
             client = get_oauth_client(provider)
 
-            token = await client.fetch_token(
+            await client.fetch_token(
                 url=config.token_url,
                 code=code,
                 redirect_uri=config.redirect_uri,
             )
-            
+
             userinfo_response = await client.get(config.userinfo_url)
-            
+
             userinfo_response.raise_for_status()
-            
+
             userinfo = userinfo_response.json()
-            
+
+            if provider == "github":
+                provider_user_id = str(userinfo["id"])
+                email = await self.get_github_email(client)
+
+                full_name = userinfo.get("name") or userinfo.get("login", "")
+                first_name = full_name
+                last_name = ""
+
+            else:
+                provider_user_id = userinfo["sub"]
+                email = userinfo["email"]
+                first_name = userinfo.get("given_name", "")
+                last_name = userinfo.get("family_name", "")
+
             identity = await self.user_identity_repo.get_by_provider_identity(
                 provider=provider,
-                provider_user_id=userinfo["sub"],
+                provider_user_id=provider_user_id,
             )
 
             if identity is not None:
@@ -385,15 +381,13 @@ class AuthService:
                     )
 
             else:
-                user = await self.user_repo.get_by_email(
-                    userinfo["email"],
-                )
+                user = await self.user_repo.get_by_email(email)
 
                 if user is None:
                     user = User(
-                        email=userinfo["email"],
-                        first_name=userinfo.get("given_name", ""),
-                        last_name=userinfo.get("family_name", ""),
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
                     )
 
                     user = await self.user_repo.create(user)
@@ -401,22 +395,22 @@ class AuthService:
                 identity = UserIdentity(
                     user_id=user.id,
                     provider=provider,
-                    provider_user_id=userinfo["sub"],
-                    email=userinfo["email"],
+                    provider_user_id=provider_user_id,
+                    email=email,
                 )
 
                 await self.user_identity_repo.create(identity)
 
             logger.info(
-                "OAuth user info | sub=%s email=%s",
-                userinfo["sub"],
-                userinfo["email"],
+                "OAuth user info | provider=%s provider_user_id=%s email=%s",
+                provider,
+                provider_user_id,
+                email,
             )
-            
+
             session = Session(
                 user_id=user.id,
-                expires_at=utc_now()
-                + timedelta(days=settings.SESSION_EXPIRE_DAYS),
+                expires_at=utc_now() + timedelta(days=settings.SESSION_EXPIRE_DAYS),
             )
 
             await self.session_repo.create(session)
@@ -443,14 +437,13 @@ class AuthService:
             )
 
             raise
-    
+
     async def get_google_user_info(
         self,
         access_token: str,
     ) -> dict[str, Any]:
-        
+
         try:
-            
             client = get_oauth_client()
 
             response = await client.get(
@@ -476,5 +469,27 @@ class AuthService:
                 "Failed to retrieve Google user information",
             )
             raise
-    
-                
+
+    async def get_github_email(self, client: AsyncOAuth2Client) -> str:
+        response = await client.get(
+            "https://api.github.com/user/emails",
+            headers={
+                "Accept": "application/vnd.github+json",
+            },
+        )
+
+        response.raise_for_status()
+
+        emails = response.json()
+
+        for email_data in emails:
+            if email_data.get("primary") and email_data.get("verified"):
+                return email_data["email"]
+
+        for email_data in emails:
+            if email_data.get("verified"):
+                return email_data["email"]
+
+        raise UnauthorizedException(
+            message="No verified email found for GitHub account",
+        )

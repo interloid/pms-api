@@ -1,14 +1,13 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, Response, Request
+from fastapi import APIRouter, Cookie, Depends, Response
 from fastapi.responses import RedirectResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.redis import get_redis
-from app.core.oauth.client import get_oauth_client
-from app.db.session import get_db
 from app.core.settings import settings
+from app.db.redis import get_redis
+from app.db.session import get_db
 from app.exceptions.custom import (
     InternalServerException,
     UnauthorizedException,
@@ -21,16 +20,6 @@ from app.schemas.auth_schema import (
 )
 from app.schemas.response import ApiResponse
 from app.services.auth_service import AuthService
-from app.core.oauth.state import generate_oauth_state
-from app.exceptions.custom import (
-    AppException,
-    ConflictException,
-    ForbiddenException,
-    NotFoundException,
-    UnauthorizedException,
-)
-
-
 
 router = APIRouter(
     prefix="/auth",
@@ -146,39 +135,9 @@ async def login_passcode(
 
     return result
 
-# @router.get(
-#     "/omniauth/{provider}",
-#     responses=AUTH_ERROR_RESPONSES,
-# )
-# async def omniauth(
-#     provider: str,
-#     db: AsyncSession = Depends(get_db),
-#     redis: Redis = Depends(get_redis),
-# ):
-
-#     service = AuthService(
-#         db=db,
-#         redis=redis,
-#     )
-
-#     state = generate_oauth_state()
-
-#     await service.oauth_state_repo.create(
-#         state=state,
-#         provider=provider,
-#         ttl=settings.OAUTH_STATE_EXPIRE_SECONDS,
-#     )
-
-#     redirect_uri = settings.GOOGLE_REDIRECT_URI
-
-#     return await oauth.google.authorize_redirect(
-#         redirect_uri,
-#         state=state,
-#     )
-
 
 @router.get(
-    "/omniauth/{provider}",
+    "/{provider}",
     responses=AUTH_ERROR_RESPONSES,
 )
 async def omniauth(
@@ -199,10 +158,10 @@ async def omniauth(
         url=authorization_url,
         status_code=302,
     )
-    
-    
+
+
 @router.get(
-    "/omniauth/{provider}/callback",
+    "/{provider}/callback",
     responses=AUTH_ERROR_RESPONSES,
 )
 async def omniauth_callback(
@@ -222,9 +181,12 @@ async def omniauth_callback(
         code=code,
         state=state,
     )
-    
+
+    if result.data is None:
+        raise InternalServerException(message="OAuth session data is missing")
+
     session_id = result.data["session_id"]
-    
+
     response = RedirectResponse(
         url=settings.YOUR_REACT_URL,
         status_code=302,
@@ -234,9 +196,8 @@ async def omniauth_callback(
         key="session",
         value=session_id,
         httponly=True,
+        secure=True,
+        samesite="lax",
     )
 
-    return result
-
-
-    
+    return response

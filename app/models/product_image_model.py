@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Boolean, ForeignKey,  Text, text, Index
+from sqlalchemy import Boolean, ForeignKey, Index, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 class ProductImage(BaseEntity):
     __tablename__ = "product_images"
-    
+
     __table_args__ = (
         Index(
             "uq_product_primary_image",
@@ -22,9 +22,9 @@ class ProductImage(BaseEntity):
             postgresql_where=text("is_primary = true"),
         ),
     )
-    
+
     url: Mapped[str] = mapped_column(
-         Text,
+        Text,
         nullable=False,
     )
 
@@ -34,14 +34,14 @@ class ProductImage(BaseEntity):
         server_default=text("false"),
         nullable=False,
     )
-    
+
     product_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False,
-        index=True
+        index=True,
     )
-    
+
     product: Mapped["Product"] = relationship(
         "Product",
         back_populates="images",

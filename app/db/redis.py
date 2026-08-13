@@ -10,7 +10,6 @@ redis_client = Redis(
     decode_responses=True,
 )
 
+
 async def get_redis() -> AsyncGenerator[Redis, None]:
     yield redis_client
-    
-    
