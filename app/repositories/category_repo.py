@@ -10,16 +10,12 @@ class CategoryRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-
     async def get_by_id(self, category_id: UUID) -> Category | None:
         stmt = select(Category).where(Category.id == category_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-
     async def get_all(self) -> list[Category]:
         stmt = select(Category).order_by(Category.name)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
-    
-    

@@ -10,21 +10,23 @@ class ProductImageRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-
     async def create(self, image: ProductImage) -> ProductImage:
         self.db.add(image)
         await self.db.flush()
         await self.db.refresh(image)
         return image
 
-
-    async def get_by_id(self,image_id: UUID) -> ProductImage | None:
-        stmt = select(ProductImage).where(ProductImage.id == image_id,)
+    async def get_by_id(self, image_id: UUID) -> ProductImage | None:
+        stmt = select(ProductImage).where(
+            ProductImage.id == image_id,
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_id_and_product(
+        self, image_id: UUID, product_id: UUID
+    ) -> ProductImage | None:
 
-    async def get_by_id_and_product(self,image_id: UUID,product_id: UUID) -> ProductImage | None:
         stmt = select(ProductImage).where(
             ProductImage.id == image_id,
             ProductImage.product_id == product_id,
@@ -32,8 +34,7 @@ class ProductImageRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-
-    async def get_by_product_id(self,product_id: UUID) -> list[ProductImage]:
+    async def get_by_product_id(self, product_id: UUID) -> list[ProductImage]:
         stmt = (
             select(ProductImage)
             .where(ProductImage.product_id == product_id)
@@ -45,8 +46,7 @@ class ProductImageRepository:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-
-    async def unset_primary(self,product_id: UUID) -> None:
+    async def unset_primary(self, product_id: UUID) -> None:
         stmt = (
             update(ProductImage)
             .where(ProductImage.product_id == product_id)
@@ -54,16 +54,13 @@ class ProductImageRepository:
         )
         await self.db.execute(stmt)
 
-
-    async def set_primary(self,image: ProductImage) -> ProductImage:
+    async def set_primary(self, image: ProductImage) -> ProductImage:
         await self.unset_primary(image.product_id)
         image.is_primary = True
         await self.db.flush()
         await self.db.refresh(image)
         return image
 
-
     async def delete(self, image: ProductImage) -> None:
         await self.db.delete(image)
         await self.db.flush()
-        

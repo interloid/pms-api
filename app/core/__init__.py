@@ -1,7 +1,6 @@
-from . import config
+from . import config, security
 from .constants import PaginationEnum
 from .lifespan import lifespan
 from .settings import settings
-from . import security
 
 __all__ = ["config", "lifespan", "security", "settings", "PaginationEnum"]

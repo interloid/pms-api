@@ -27,4 +27,3 @@ class UserResponse(UserBase):
 #         max_length=50,
 #     )
 #     email: EmailStr | None = None
-    

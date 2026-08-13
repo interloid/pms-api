@@ -17,10 +17,8 @@ class Category(BaseEntity):
         unique=True,
         nullable=False,
     )
-    
+
     products: Mapped[list["Product"]] = relationship(
         "Product",
         back_populates="category",
     )
-    
-    

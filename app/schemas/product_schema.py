@@ -2,8 +2,9 @@ from decimal import Decimal
 from uuid import UUID
 
 from pydantic import Field
-from app.schemas.common import BaseSchema
+
 from app.core.constants import ProductStatusEnum
+from app.schemas.common import BaseSchema
 from app.schemas.product_image_schema import ProductImageResponse
 
 
@@ -15,8 +16,8 @@ class ProductCreate(BaseSchema):
     stock: int = Field(ge=0)
     status: ProductStatusEnum
     description: str | None = None
-    
-    
+
+
 class ProductUpdate(BaseSchema):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     sku: str | None = Field(default=None, min_length=1, max_length=255)
@@ -25,8 +26,8 @@ class ProductUpdate(BaseSchema):
     stock: int | None = Field(default=None, ge=0)
     status: ProductStatusEnum | None = None
     description: str | None = None
-    
-    
+
+
 class ProductResponse(BaseSchema):
     id: UUID
     name: str
@@ -43,4 +44,3 @@ class ProductListResponse(BaseSchema):
     items: list[ProductResponse]
     total: int
     page: int
-    

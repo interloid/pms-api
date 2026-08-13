@@ -1,7 +1,7 @@
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product_model import Product
@@ -17,18 +17,15 @@ class ProductRepository:
         await self.db.refresh(product)
         return product
 
-
     async def get_by_id(self, product_id: UUID) -> Product | None:
         stmt = select(Product).where(Product.id == product_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-
     async def get_by_sku(self, sku: str) -> Product | None:
         stmt = select(Product).where(Product.sku == sku)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-
 
     async def list(
         self,
@@ -92,11 +89,7 @@ class ProductRepository:
         else:
             stmt = stmt.order_by(sort_column.desc())
 
-        count_stmt = select(
-            func.count()
-        ).select_from(
-            stmt.order_by(None).subquery()
-        )
+        count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
 
         count_result = await self.db.execute(count_stmt)
 
@@ -121,5 +114,3 @@ class ProductRepository:
     async def delete(self, product: Product) -> None:
         await self.db.delete(product)
         await self.db.flush()
-        
-        
