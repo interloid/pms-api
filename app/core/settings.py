@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = "http://localhost:5173"
 
-    YOUR_REACT_URL: str = "https://sm2n1j22-5173.inc1.devtunnels.ms/callback"
+    YOUR_REACT_URL: str = "http://localhost:5173/callback"
 
     model_config = SettingsConfigDict(
         env_file=".env",

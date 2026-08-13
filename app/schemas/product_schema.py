@@ -9,21 +9,45 @@ from app.schemas.product_image_schema import ProductImageResponse
 
 
 class ProductCreate(BaseSchema):
-    name: str = Field(min_length=1, max_length=255)
-    sku: str = Field(min_length=1, max_length=255)
+    name: str = Field(
+        min_length=1,
+        max_length=255,
+    )
+    sku: str = Field(
+        min_length=1,
+        max_length=255,
+    )
     category_id: UUID
-    price: Decimal = Field(ge=0)
-    stock: int = Field(ge=0)
+    price: Decimal = Field(
+        ge=0,
+    )
+    stock: int = Field(
+        ge=0,
+    )
     status: ProductStatusEnum
     description: str | None = None
 
 
 class ProductUpdate(BaseSchema):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
-    sku: str | None = Field(default=None, min_length=1, max_length=255)
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+    )
+    sku: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+    )
     category_id: UUID | None = None
-    price: Decimal | None = Field(default=None, ge=0)
-    stock: int | None = Field(default=None, ge=0)
+    price: Decimal | None = Field(
+        default=None,
+        ge=0,
+    )
+    stock: int | None = Field(
+        default=None,
+        ge=0,
+    )
     status: ProductStatusEnum | None = None
     description: str | None = None
 
@@ -38,9 +62,4 @@ class ProductResponse(BaseSchema):
     status: ProductStatusEnum
     description: str | None
     images: list[ProductImageResponse]
-
-
-class ProductListResponse(BaseSchema):
-    items: list[ProductResponse]
-    total: int
-    page: int
+    

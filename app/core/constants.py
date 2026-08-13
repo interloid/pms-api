@@ -6,12 +6,11 @@ class PaginationEnum:
     DEFAULT_PAGE_SIZE = 10
     MAX_PAGE_SIZE = 100
 
-
 class ProductStatusEnum(StrEnum):
-    ACTIVE = "Active"
-    DRAFT = "Draft"
-    OUT_OF_STOCK = "Out of Stock"
-    ARCHIVED = "Archived"
+    ACTIVE = "active"
+    DRAFT = "draft"
+    OUT_OF_STOCK = "out_of_stock"
+    ARCHIVED = "archived"
 
 
 class OAuthProviderEnum(StrEnum):
