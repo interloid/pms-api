@@ -26,7 +26,9 @@ from app.schemas.response import (
 from app.services.product_service import ProductService
 
 router = APIRouter(
-    prefix="/products", tags=["Products"], dependencies=[Depends(get_current_user)]
+    prefix="/products", 
+    tags=["Products"], 
+    dependencies=[Depends(get_current_user)]
 )
 
 

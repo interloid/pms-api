@@ -45,6 +45,16 @@ class ProductImageRepository:
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
+    
+    async def get_primary_by_product_id(self, product_id: UUID) -> ProductImage | None:
+        stmt = select(ProductImage).where(
+            ProductImage.product_id == product_id,
+            ProductImage.is_primary.is_(True),
+        )
+        result = await self.db.execute(stmt)
+
+        return result.scalar_one_or_none()
+
 
     async def unset_primary(self, product_id: UUID) -> None:
         stmt = (

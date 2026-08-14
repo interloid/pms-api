@@ -41,6 +41,12 @@ class ProductImage(BaseEntity):
         nullable=False,
         index=True,
     )
+    
+    object_key: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        unique=True,
+    )
 
     product: Mapped["Product"] = relationship(
         "Product",

@@ -81,7 +81,7 @@ async def logout(
     return result
 
 
-@router.post("/session")
+@router.get("/session")
 async def session(
     session: str | None = Cookie(
         default=None,
