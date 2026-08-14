@@ -15,6 +15,11 @@ class CategoryRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_name(self, name: str) -> Category | None:
+        stmt = select(Category).where(Category.name == name)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_all(self) -> list[Category]:
         stmt = select(Category).order_by(Category.name)
         result = await self.db.execute(stmt)

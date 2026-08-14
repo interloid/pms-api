@@ -1,5 +1,4 @@
 from datetime import timedelta
-from typing import Any
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -169,28 +168,26 @@ class AuthService:
                 )
                 raise UnauthorizedException(message="Invalid session")
 
-        except AppException:
-            await self._rollback()
-            raise
+            return user
 
         except Exception:
-            await self._rollback()
+            # await self._rollback()
             logger.exception("Unexpected error")
             raise
 
-        return ApiResponse[LoginResponse](
-            message="Session retrieved successfully",
-            data=LoginResponse(
-                session_id=session.id,
-                user=UserResponse(
-                    id=user.id,
-                    email=user.email,
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    is_active=user.is_active,
-                ),
-            ),
-        )
+        # return ApiResponse[LoginResponse](
+        #     message="Session retrieved successfully",
+        #     data=LoginResponse(
+        #         session_id=session.id,
+        #         user=UserResponse(
+        #             id=user.id,
+        #             email=user.email,
+        #             first_name=user.first_name,
+        #             last_name=user.last_name,
+        #             is_active=user.is_active,
+        #         ),
+        #     ),
+        # )
 
     async def login_passcode(self, login_data: PasscodeLoginRequest):
 
@@ -340,6 +337,10 @@ class AuthService:
                 )
 
             client = get_oauth_client(provider)
+            logger.info(
+                "Exchanging OAuth code for token | provider=%s",
+                provider,
+            )
 
             await client.fetch_token(
                 url=config.token_url,
@@ -347,25 +348,76 @@ class AuthService:
                 redirect_uri=config.redirect_uri,
             )
 
+            logger.info(
+                "OAuth token exchange successful | provider=%s",
+                provider,
+            )
+
             userinfo_response = await client.get(config.userinfo_url)
+
+            logger.info(
+                "OAuth userinfo response | provider=%s status=%s",
+                provider,
+                userinfo_response.status_code,
+            )
 
             userinfo_response.raise_for_status()
 
             userinfo = userinfo_response.json()
 
+            userinfo_response.raise_for_status()
+
             if provider == "github":
                 provider_user_id = str(userinfo["id"])
+
                 email = await self.get_github_email(client)
 
                 full_name = userinfo.get("name") or userinfo.get("login", "")
-                first_name = full_name
-                last_name = ""
+                name_parts = full_name.split(maxsplit=1)
 
-            else:
+                first_name = name_parts[0] if name_parts else ""
+                last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+            elif provider == "google":
                 provider_user_id = userinfo["sub"]
-                email = userinfo["email"]
+
+                email = userinfo.get("email")
+
+                if not email:
+                    raise UnauthorizedException(
+                        message="Google account does not provide an email",
+                    )
+
+                if userinfo.get("email_verified") is not True:
+                    raise UnauthorizedException(
+                        message="Google email is not verified",
+                    )
+
                 first_name = userinfo.get("given_name", "")
                 last_name = userinfo.get("family_name", "")
+
+            elif provider == "microsoft":
+                provider_user_id = userinfo["sub"]
+
+                # Microsoft OIDC userinfo may provide the email
+                # through either `email` or `preferred_username`.
+                email = userinfo.get("email") or userinfo.get("preferred_username")
+
+                if not email:
+                    raise UnauthorizedException(
+                        message="Microsoft account does not provide an email",
+                    )
+
+                full_name = userinfo.get("name", "")
+                name_parts = full_name.split(maxsplit=1)
+
+                first_name = name_parts[0] if name_parts else ""
+                last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+            else:
+                raise NotFoundException(
+                    message="OAuth provider not supported",
+                )
 
             identity = await self.user_identity_repo.get_by_provider_identity(
                 provider=provider,
@@ -438,37 +490,37 @@ class AuthService:
 
             raise
 
-    async def get_google_user_info(
-        self,
-        access_token: str,
-    ) -> dict[str, Any]:
+    # async def get_google_user_info(
+    #     self,
+    #     access_token: str,
+    # ) -> dict[str, Any]:
 
-        try:
-            client = get_oauth_client()
+    #     try:
+    #         client = get_oauth_client()
 
-            response = await client.get(
-                "https://openidconnect.googleapis.com/v1/userinfo",
-                token={
-                    "access_token": access_token,
-                    "token_type": "Bearer",
-                },
-            )
+    #         response = await client.get(
+    #             "https://openidconnect.googleapis.com/v1/userinfo",
+    #             token={
+    #                 "access_token": access_token,
+    #                 "token_type": "Bearer",
+    #             },
+    #         )
 
-            response.raise_for_status()
+    #         response.raise_for_status()
 
-            user_info = response.json()
+    #         user_info = response.json()
 
-            logger.info(
-                "Google user information retrieved successfully",
-            )
+    #         logger.info(
+    #             "Google user information retrieved successfully",
+    #         )
 
-            return user_info
+    #         return user_info
 
-        except Exception:
-            logger.exception(
-                "Failed to retrieve Google user information",
-            )
-            raise
+    #     except Exception:
+    #         logger.exception(
+    #             "Failed to retrieve Google user information",
+    #         )
+    #         raise
 
     async def get_github_email(self, client: AsyncOAuth2Client) -> str:
         response = await client.get(

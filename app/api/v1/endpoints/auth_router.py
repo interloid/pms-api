@@ -196,7 +196,7 @@ async def omniauth_callback(
         key="session",
         value=session_id,
         httponly=True,
-        secure=True,
+        secure=False,
         samesite="lax",
     )
 

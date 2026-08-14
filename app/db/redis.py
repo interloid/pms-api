@@ -1,15 +1,17 @@
-from collections.abc import AsyncGenerator
-
+from fastapi import Request
 from redis.asyncio import Redis
 
 from app.core.settings import settings
 
-redis_client = Redis(
-    host=settings.REDIS_HOST,
-    port=settings.REDIS_PORT,
-    decode_responses=True,
-)
+
+def create_redis() -> Redis:
+    return Redis(
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        password=settings.REDIS_PASSWORD,
+        decode_responses=True,
+    )
 
 
-async def get_redis() -> AsyncGenerator[Redis, None]:
-    yield redis_client
+async def get_redis(request: Request) -> Redis:
+    return request.app.state.redis

@@ -8,10 +8,10 @@ class PaginationEnum:
 
 
 class ProductStatusEnum(StrEnum):
-    ACTIVE = "Active"
-    DRAFT = "Draft"
-    OUT_OF_STOCK = "Out of Stock"
-    ARCHIVED = "Archived"
+    ACTIVE = "active"
+    DRAFT = "draft"
+    OUT_OF_STOCK = "out_of_stock"
+    ARCHIVED = "archived"
 
 
 class OAuthProviderEnum(StrEnum):
