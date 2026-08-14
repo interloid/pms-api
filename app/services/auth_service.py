@@ -1,5 +1,4 @@
 from datetime import timedelta
-from typing import Any
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -169,28 +168,26 @@ class AuthService:
                 )
                 raise UnauthorizedException(message="Invalid session")
 
-        except AppException:
-            await self._rollback()
-            raise
+            return user
 
         except Exception:
-            await self._rollback()
+            # await self._rollback()
             logger.exception("Unexpected error")
             raise
 
-        return ApiResponse[LoginResponse](
-            message="Session retrieved successfully",
-            data=LoginResponse(
-                session_id=session.id,
-                user=UserResponse(
-                    id=user.id,
-                    email=user.email,
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    is_active=user.is_active,
-                ),
-            ),
-        )
+        # return ApiResponse[LoginResponse](
+        #     message="Session retrieved successfully",
+        #     data=LoginResponse(
+        #         session_id=session.id,
+        #         user=UserResponse(
+        #             id=user.id,
+        #             email=user.email,
+        #             first_name=user.first_name,
+        #             last_name=user.last_name,
+        #             is_active=user.is_active,
+        #         ),
+        #     ),
+        # )
 
     async def login_passcode(self, login_data: PasscodeLoginRequest):
 
@@ -350,7 +347,7 @@ class AuthService:
                 code=code,
                 redirect_uri=config.redirect_uri,
             )
-            
+
             logger.info(
                 "OAuth token exchange successful | provider=%s",
                 provider,
@@ -363,7 +360,7 @@ class AuthService:
                 provider,
                 userinfo_response.status_code,
             )
-            
+
             userinfo_response.raise_for_status()
 
             userinfo = userinfo_response.json()
@@ -404,10 +401,7 @@ class AuthService:
 
                 # Microsoft OIDC userinfo may provide the email
                 # through either `email` or `preferred_username`.
-                email = (
-                    userinfo.get("email")
-                    or userinfo.get("preferred_username")
-                )
+                email = userinfo.get("email") or userinfo.get("preferred_username")
 
                 if not email:
                     raise UnauthorizedException(
@@ -424,7 +418,6 @@ class AuthService:
                 raise NotFoundException(
                     message="OAuth provider not supported",
                 )
-
 
             identity = await self.user_identity_repo.get_by_provider_identity(
                 provider=provider,

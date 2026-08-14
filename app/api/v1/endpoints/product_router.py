@@ -4,12 +4,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_user
 from app.core.constants import (
     PaginationEnum,
     ProductStatusEnum,
 )
 from app.db.session import get_db
 from app.exceptions.global_exception import CRUD_ERROR_RESPONSES
+from app.models.product_model import Product
+from app.schemas.product_image_schema import ProductImageResponse
 from app.schemas.product_schema import (
     ProductCreate,
     ProductResponse,
@@ -22,11 +25,23 @@ from app.schemas.response import (
 )
 from app.services.product_service import ProductService
 
-
 router = APIRouter(
-    prefix="/products",
-    tags=["Products"],
+    prefix="/products", tags=["Products"], dependencies=[Depends(get_current_user)]
 )
+
+
+def to_product_response(product: Product) -> ProductResponse:
+    return ProductResponse(
+        id=product.id,
+        name=product.name,
+        sku=product.sku,
+        category_name=product.category.name,
+        price=product.price,
+        stock=product.stock,
+        status=ProductStatusEnum(product.status),
+        description=product.description,
+        images=[ProductImageResponse.model_validate(image) for image in product.images],
+    )
 
 
 @router.post(
@@ -48,8 +63,7 @@ async def create_product(
     )
 
     return ApiResponse(
-        message="Product created successfully",
-        data=ProductResponse.model_validate(product),
+        message="Product created successfully", data=to_product_response(product)
     )
 
 
@@ -65,8 +79,10 @@ async def list_products(
         min_length=1,
         max_length=100,
     ),
-    category_id: UUID | None = Query(
+    category_name: str | None = Query(
         default=None,
+        min_length=1,
+        max_length=255,
     ),
     status_filter: ProductStatusEnum | None = Query(
         default=None,
@@ -110,7 +126,7 @@ async def list_products(
 
     products, total = await product_service.list_products(
         search=search,
-        category_id=category_id,
+        category_name=category_name,
         status=status_filter,
         min_price=min_price,
         max_price=max_price,
@@ -121,10 +137,7 @@ async def list_products(
         page_size=page_size,
     )
 
-    items = [
-        ProductResponse.model_validate(product)
-        for product in products
-    ]
+    items = [to_product_response(product) for product in products]
 
     total_pages = product_service.calculate_total_pages(
         total=total,
@@ -162,8 +175,7 @@ async def get_product(
     )
 
     return ApiResponse(
-        message="Product retrieved successfully",
-        data=ProductResponse.model_validate(product),
+        message="Product retrieved successfully", data=to_product_response(product)
     )
 
 
@@ -188,8 +200,7 @@ async def update_product(
     )
 
     return ApiResponse(
-        message="Product updated successfully",
-        data=ProductResponse.model_validate(product),
+        message="Product retrieved successfully", data=to_product_response(product)
     )
 
 
@@ -213,6 +224,3 @@ async def delete_product(
     return Response(
         status_code=status.HTTP_204_NO_CONTENT,
     )
-    
-    
-    

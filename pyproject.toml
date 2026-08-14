@@ -48,6 +48,9 @@ select = [
     "UP",  # pyupgrade
 ]
 
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+
 ignore = []
 
 [tool.ruff.format]

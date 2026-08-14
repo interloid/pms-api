@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from math import ceil
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,24 +11,7 @@ from app.core.constants import PaginationEnum
 from app.exceptions.custom import BadRequestException
 
 
-ModelT = TypeVar("ModelT")
-
-
-class BaseService(Generic[ModelT]):
-    """
-    Base service containing reusable query and pagination functionality.
-
-    Responsibilities:
-    - Pagination validation
-    - Pagination calculation
-    - Search expression construction
-    - Sorting validation
-    - Generic filter application
-    - Pagination metadata calculation
-
-    Business-specific validation belongs in the concrete service.
-    """
-
+class BaseService[T]:
     def __init__(
         self,
         db: AsyncSession,
@@ -154,7 +137,7 @@ class BaseService(Generic[ModelT]):
         *,
         page: int,
         page_size: int,
-    ) -> tuple[list[ModelT], int]:
+    ) -> tuple[list[T], int]:
         """
         Execute a SELECT statement with pagination and return:
 
@@ -190,4 +173,3 @@ class BaseService(Generic[ModelT]):
         items = list(result.scalars().unique().all())
 
         return items, total
-    

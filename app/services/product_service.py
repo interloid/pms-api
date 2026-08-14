@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.constants import ProductStatusEnum
@@ -15,17 +16,6 @@ from app.services.base_service import BaseService
 
 
 class ProductService(BaseService[Product]):
-    """
-    Product business logic.
-
-    Responsibilities:
-    - Product CRUD business rules
-    - SKU uniqueness validation
-    - Category existence validation
-    - Product-specific search/filter/sort configuration
-    - Pagination through BaseService
-    """
-
     SORT_FIELDS = {
         "name": Product.name,
         "sku": Product.sku,
@@ -38,46 +28,32 @@ class ProductService(BaseService[Product]):
 
     DEFAULT_SORT = "updated"
 
-    def __init__(
-        self,
-        db,
-    ) -> None:
-        super().__init__(db=db)
+    def __init__(self, db: AsyncSession) -> None:
+        super().__init__(db)
 
-        self.product_repository = ProductRepository(
-            db=db,
-        )
+        self.product_repo = ProductRepository(db)
+        self.category_repo = CategoryRepository(db)
 
-        self.category_repository = CategoryRepository(
-            db=db,
-        )
+    async def create_product(self, payload: ProductCreate) -> Product:
 
-    async def create_product(
-        self,
-        payload: ProductCreate,
-    ) -> Product:
-        existing_product = await self.product_repository.get_by_sku(
-            sku=payload.sku,
-        )
+        existing_product = await self.product_repo.get_by_sku(sku=payload.sku)
 
         if existing_product is not None:
             raise ConflictException(
                 message="Product with this SKU already exists",
             )
 
-        category = await self.category_repository.get_by_id(
-            category_id=payload.category_id,
-        )
+        category_name = payload.category_name.strip()
+
+        category = await self.category_repo.get_by_name(name=category_name)
 
         if category is None:
-            raise NotFoundException(
-                message="Category not found",
-            )
+            raise NotFoundException(message="Category not found")
 
         product = Product(
             name=payload.name,
             sku=payload.sku,
-            category_id=payload.category_id,
+            category_id=category.id,
             price=payload.price,
             stock=payload.stock,
             status=payload.status,
@@ -85,27 +61,20 @@ class ProductService(BaseService[Product]):
         )
 
         try:
-            return await self.product_repository.create(
-                product=product,
-            )
+            return await self.product_repo.create(product=product)
 
         except IntegrityError as exc:
+            await self.db.rollback()
             raise ConflictException(
-                message="Product with this SKU already exists",
+                message="Product with this SKU already exists"
             ) from exc
 
-    async def get_product(
-        self,
-        product_id: UUID,
-    ) -> Product:
-        product = await self.product_repository.get_by_id(
-            product_id=product_id,
-        )
+    async def get_product(self, product_id: UUID) -> Product:
+
+        product = await self.product_repo.get_by_id(product_id=product_id)
 
         if product is None:
-            raise NotFoundException(
-                message="Product not found",
-            )
+            raise NotFoundException(message="Product not found")
 
         return product
 
@@ -113,7 +82,7 @@ class ProductService(BaseService[Product]):
         self,
         *,
         search: str | None = None,
-        category_id: UUID | None = None,
+        category_name: str | None = None,
         status: ProductStatusEnum | None = None,
         min_price: Decimal | None = None,
         max_price: Decimal | None = None,
@@ -123,6 +92,7 @@ class ProductService(BaseService[Product]):
         page: int = 1,
         page_size: int = 10,
     ) -> tuple[list[Product], int]:
+
         self.validate_pagination(
             page=page,
             page_size=page_size,
@@ -138,11 +108,8 @@ class ProductService(BaseService[Product]):
             default_sort=self.DEFAULT_SORT,
         )
 
-        stmt = (
-            select(Product)
-            .options(
-                selectinload(Product.images),
-            )
+        stmt = select(Product).options(
+            selectinload(Product.images), selectinload(Product.category)
         )
 
         if search:
@@ -160,9 +127,11 @@ class ProductService(BaseService[Product]):
 
         filters = []
 
-        if category_id is not None:
+        if category_name is not None:
             filters.append(
-                Product.category_id == category_id,
+                Product.category.has(
+                    name=category_name,
+                ),
             )
 
         if status is not None:
@@ -212,7 +181,8 @@ class ProductService(BaseService[Product]):
         product_id: UUID,
         payload: ProductUpdate,
     ) -> Product:
-        product = await self.product_repository.get_by_id(
+
+        product = await self.product_repo.get_by_id(
             product_id=product_id,
         )
 
@@ -228,32 +198,31 @@ class ProductService(BaseService[Product]):
         if not updates:
             return product
 
-        if "sku" in updates:
-            existing_product = (
-                await self.product_repository.get_by_sku(
-                    sku=updates["sku"],
-                )
+        if "sku" in updates and updates["sku"] != product.sku:
+            existing_product = await self.product_repo.get_by_sku(
+                sku=updates["sku"],
             )
 
-            if (
-                existing_product is not None
-                and existing_product.id != product.id
-            ):
+            if existing_product is not None and existing_product.id != product.id:
                 raise ConflictException(
                     message="Product with this SKU already exists",
                 )
 
-        if "category_id" in updates:
-            category = (
-                await self.category_repository.get_by_id(
-                    category_id=updates["category_id"],
-                )
+        if "category_name" in updates:
+            category_name = updates["category_name"].strip()
+
+            category = await self.category_repo.get_by_name(
+                name=category_name,
             )
 
             if category is None:
                 raise NotFoundException(
                     message="Category not found",
                 )
+
+            product.category_id = category.id
+
+            del updates["category_name"]
 
         for field, value in updates.items():
             setattr(
@@ -263,30 +232,20 @@ class ProductService(BaseService[Product]):
             )
 
         try:
-            return await self.product_repository.update(
-                product=product,
-            )
+            return await self.product_repo.update(product=product)
 
         except IntegrityError as exc:
             raise ConflictException(
-                message="Product could not be updated because of a conflicting resource",
+                message=(
+                    "Product could not be updated because of a conflicting resource"
+                ),
             ) from exc
 
-    async def delete_product(
-        self,
-        product_id: UUID,
-    ) -> None:
-        product = await self.product_repository.get_by_id(
-            product_id=product_id,
-        )
+    async def delete_product(self, product_id: UUID) -> None:
+
+        product = await self.product_repo.get_by_id(product_id=product_id)
 
         if product is None:
-            raise NotFoundException(
-                message="Product not found",
-            )
+            raise NotFoundException(message="Product not found")
 
-        await self.product_repository.delete(
-            product=product,
-        )
-        
-        
+        await self.product_repo.delete(product=product)

@@ -42,6 +42,7 @@ class ProductRepository:
             select(Product)
             .options(
                 selectinload(Product.images),
+                selectinload(Product.category),
             )
             .where(Product.id == product_id)
         )
@@ -54,10 +55,7 @@ class ProductRepository:
         self,
         sku: str,
     ) -> Product | None:
-        stmt = (
-            select(Product)
-            .where(Product.sku == sku)
-        )
+        stmt = select(Product).where(Product.sku == sku)
 
         result = await self.db.execute(stmt)
 
@@ -78,11 +76,8 @@ class ProductRepository:
         page_size: int = 10,
     ) -> tuple[list[Product], int]:
 
-        stmt = (
-            select(Product)
-            .options(
-                selectinload(Product.images),
-            )
+        stmt = select(Product).options(
+            selectinload(Product.images),
         )
 
         if search:
@@ -161,17 +156,11 @@ class ProductRepository:
 
         offset = (page - 1) * page_size
 
-        stmt = (
-            stmt
-            .offset(offset)
-            .limit(page_size)
-        )
+        stmt = stmt.offset(offset).limit(page_size)
 
         result = await self.db.execute(stmt)
 
-        products = list(
-            result.scalars().unique().all()
-        )
+        products = list(result.scalars().unique().all())
 
         return products, total
 
@@ -199,5 +188,3 @@ class ProductRepository:
         await self.db.delete(product)
 
         await self.db.flush()
-        
-        

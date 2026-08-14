@@ -85,5 +85,3 @@ class InternalServerException(AppException):
             error_code="INTERNAL_SERVER_ERROR",
             details=details,
         )
-        
-        
