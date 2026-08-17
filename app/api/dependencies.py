@@ -4,12 +4,12 @@ from fastapi import Depends, Request
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.s3 import S3Service
 from app.db.redis import get_redis
 from app.db.session import get_db
 from app.exceptions.custom import UnauthorizedException
-from app.services.auth_service import AuthService
-from app.core.s3 import S3Service
 from app.repositories.product_image_repo import ProductImageRepository
+from app.services.auth_service import AuthService
 from app.services.product_image_service import ProductImageService
 
 SESSION_COOKIE_NAME = "session_id"
@@ -44,8 +44,10 @@ async def get_current_user(
     )
 
 
-async def get_product_image_service(db: AsyncSession = Depends(get_db)) -> ProductImageService:
-    
+async def get_product_image_service(
+    db: AsyncSession = Depends(get_db),
+) -> ProductImageService:
+
     product_image_repo = ProductImageRepository(db=db)
     s3_service = S3Service()
 
@@ -53,5 +55,3 @@ async def get_product_image_service(db: AsyncSession = Depends(get_db)) -> Produ
         product_image_repo=product_image_repo,
         s3_service=s3_service,
     )
-    
-    

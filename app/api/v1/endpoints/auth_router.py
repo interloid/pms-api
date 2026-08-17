@@ -16,7 +16,8 @@ from app.exceptions.global_exception import AUTH_ERROR_RESPONSES
 from app.schemas.auth_schema import (
     LoginRequest,
     LoginResponse,
-    PasscodeLoginRequest,
+    PasscodeRequest,
+    PasscodeVerifyRequest,
 )
 from app.schemas.response import ApiResponse
 from app.services.auth_service import AuthService
@@ -106,34 +107,37 @@ async def session(
     return await service.get_current_session(session_id)
 
 
-@router.post(
-    "/login/passcode",
-    response_model=ApiResponse[LoginResponse],
-    responses=AUTH_ERROR_RESPONSES,
-)
-async def login_passcode(
-    login_data: PasscodeLoginRequest,
-    response: Response,
+@router.post("/passcode/request")
+async def request_passcode(
+    login_data: PasscodeRequest,
+    redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
     service = AuthService(db)
 
-    result = await service.login_passcode(login_data)
-
-    if result.data is None:
-        raise InternalServerException(
-            message="Login response data is missing",
-        )
-
-    response.set_cookie(
-        key="session",
-        value=str(result.data.session_id),
-        httponly=True,
-        secure=True,
-        samesite="lax",
+    await service.request_passcode(
+        email=login_data.email,
+        redis=redis,
     )
 
-    return result
+    return ApiResponse(
+        message="Verification code sent to the email is registered.",
+    )
+
+
+@router.post("/passcode/verify")
+async def verify_passcode(
+    login_data: PasscodeVerifyRequest,
+    redis: Redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_db),
+):
+    service = AuthService(db)
+
+    return await service.verify_email_passcode(
+        email=login_data.email,
+        passcode=login_data.passcode,
+        redis=redis,
+    )
 
 
 @router.get(

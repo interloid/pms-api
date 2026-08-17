@@ -27,12 +27,25 @@ class Settings(BaseSettings):
 
     REDIS_HOST: str
     REDIS_PORT: int = 6379
+    REDIS_USERNAME: str
     REDIS_PASSWORD: str | None = None
-    
+
     AWS_ACCESS_KEY_ID: str
     AWS_SECRET_ACCESS_KEY: str
     AWS_REGION: str
     S3_BUCKET_NAME: str
+
+    SMTP_HOST: str
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str
+    SMTP_PASSWORD: str
+    SMTP_FROM_EMAIL: str
+    SMTP_FROM_NAME: str = "Product Management System"
+    SMTP_USE_TLS: bool = False
+
+    PASSCODE_EXPIRE_SECONDS: int = 300
+    PASSCODE_LENGTH: int = 6
+    PASSCODE_MAX_ATTEMPTS: int = 3
 
     CORS_ORIGINS: str = "http://localhost:5173"
 

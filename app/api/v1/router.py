@@ -1,6 +1,11 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth_router, health, product_router, product_image_router
+from app.api.v1.endpoints import (
+    auth_router,
+    health,
+    product_image_router,
+    product_router,
+)
 
 router = APIRouter()
 

@@ -1,18 +1,29 @@
 from decimal import Decimal
 from uuid import UUID
 
+from fastapi import UploadFile
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.constants import ProductStatusEnum
-from app.exceptions.custom import ConflictException, NotFoundException
+from app.core.constants import (
+    ProductImageConstants,
+    ProductStatusEnum,
+)
+from app.core.s3 import S3Service
+from app.exceptions.custom import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.models.product_model import Product
 from app.repositories.category_repo import CategoryRepository
+from app.repositories.product_image_repo import ProductImageRepository
 from app.repositories.product_repo import ProductRepository
 from app.schemas.product_schema import ProductCreate, ProductUpdate
 from app.services.base_service import BaseService
+from app.services.product_image_service import ProductImageService
 
 
 class ProductService(BaseService[Product]):
@@ -33,8 +44,60 @@ class ProductService(BaseService[Product]):
 
         self.product_repo = ProductRepository(db)
         self.category_repo = CategoryRepository(db)
+        self.product_image_service = ProductImageService(
+            product_image_repo=ProductImageRepository(db),
+            s3_service=S3Service(),
+        )
 
-    async def create_product(self, payload: ProductCreate) -> Product:
+    async def _validate_product_images(
+        self,
+        images: list[UploadFile],
+    ) -> None:
+
+        if len(images) > ProductImageConstants.MAX_IMAGES:
+            raise BadRequestException(
+                message=(
+                    f"Maximum {ProductImageConstants.MAX_IMAGES} images are allowed"
+                ),
+            )
+
+        for image in images:
+            if not image.filename:
+                raise BadRequestException(
+                    message="Image filename is required",
+                )
+
+            if not image.content_type:
+                raise BadRequestException(
+                    message=(
+                        f"Content type could not be determined for '{image.filename}'"
+                    ),
+                )
+
+            if image.content_type not in ProductImageConstants.ALLOWED_CONTENT_TYPES:
+                raise BadRequestException(
+                    message=(
+                        f"Unsupported image type '{image.content_type}'. "
+                        "Allowed types: JPEG, PNG, and WebP"
+                    ),
+                )
+
+            content = await image.read()
+
+            if len(content) > ProductImageConstants.MAX_FILE_SIZE:
+                raise BadRequestException(
+                    message=(
+                        f"Image '{image.filename}' exceeds the maximum size of 5 MB"
+                    ),
+                )
+
+            await image.seek(0)
+
+    async def create_product(
+        self, payload: ProductCreate, images: list[UploadFile]
+    ) -> Product:
+
+        await self._validate_product_images(images)
 
         existing_product = await self.product_repo.get_by_sku(sku=payload.sku)
 
@@ -61,10 +124,31 @@ class ProductService(BaseService[Product]):
         )
 
         try:
-            return await self.product_repo.create(product=product)
+            product = await self.product_repo.create(
+                product=product,
+            )
+
+            for index, image in enumerate(images):
+                await self.product_image_service.upload_image(
+                    product_id=product.id,
+                    file=image.file,
+                    filename=image.filename or "image",
+                    content_type=image.content_type or "application/octet-stream",
+                    is_primary=(index == 0),
+                )
+
+            product = await self.product_repo.get_by_id(
+                product_id=product.id,
+            )
+
+            if product is None:
+                raise RuntimeError("Product not found after creation")
+
+            return product
 
         except IntegrityError as exc:
             await self.db.rollback()
+
             raise ConflictException(
                 message="Product with this SKU already exists"
             ) from exc

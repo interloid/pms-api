@@ -16,9 +16,22 @@ class LoginRequest(BaseSchema):
     password: str = Field(min_length=8, max_length=128)
 
 
+class PasscodeRequest(BaseSchema):
+    email: EmailStr
+
+
 class LoginResponse(BaseSchema):
     session_id: UUID
     user: UserResponse
+
+
+class PasscodeVerifyRequest(BaseSchema):
+    email: EmailStr
+    passcode: str = Field(
+        min_length=6,
+        max_length=6,
+        pattern=r"^\d{6}$",
+    )
 
 
 class OAuthAuthorizationRequest(BaseSchema):

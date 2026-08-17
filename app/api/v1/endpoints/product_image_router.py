@@ -2,16 +2,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, UploadFile, status
 
+from app.api.dependencies import get_product_image_service
 from app.schemas.product_image_schema import ProductImageResponse
 from app.services.product_image_service import ProductImageService
-from app.api.dependencies import get_product_image_service
-
 
 router = APIRouter(
     prefix="/products/{product_id}/images",
     tags=["Product Images"],
 )
-
 
 
 @router.post(
@@ -37,7 +35,6 @@ async def upload_product_image(
     return ProductImageResponse.model_validate(image)
 
 
-
 @router.get("", response_model=list[ProductImageResponse])
 async def get_product_images(
     product_id: UUID,
@@ -46,11 +43,7 @@ async def get_product_images(
 
     images = await service.get_product_images(product_id=product_id)
 
-    return [
-        ProductImageResponse.model_validate(image)
-        for image in images
-    ]
-
+    return [ProductImageResponse.model_validate(image) for image in images]
 
 
 @router.patch("/{image_id}/primary", response_model=ProductImageResponse)
@@ -65,8 +58,7 @@ async def set_primary_product_image(
     return ProductImageResponse.model_validate(image)
 
 
-
-@router.delete("/{image_id}",status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_product_image(
     product_id: UUID,
     image_id: UUID,
@@ -74,4 +66,3 @@ async def delete_product_image(
 ) -> None:
 
     await service.delete_image(image_id=image_id, product_id=product_id)
-

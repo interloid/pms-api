@@ -1,10 +1,10 @@
 from decimal import Decimal
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user
 from app.core.constants import (
     PaginationEnum,
     ProductStatusEnum,
@@ -24,10 +24,11 @@ from app.schemas.response import (
     PaginationMeta,
 )
 from app.services.product_service import ProductService
+from app.api.dependencies import get_current_user
 
 router = APIRouter(
-    prefix="/products", 
-    tags=["Products"], 
+    prefix="/products",
+    tags=["Products"],
     dependencies=[Depends(get_current_user)]
 )
 
@@ -53,19 +54,38 @@ def to_product_response(product: Product) -> ProductResponse:
     responses=CRUD_ERROR_RESPONSES,
 )
 async def create_product(
-    payload: ProductCreate,
+    name: Annotated[str, Form(...)],
+    sku: Annotated[str, Form(...)],
+    category_name: Annotated[str, Form(...)],
+    price: Annotated[Decimal, Form(...)],
+    stock: Annotated[int, Form(...)],
+    status: Annotated[ProductStatusEnum, Form(...)],
+    description: Annotated[str | None, Form()] = None,
+    images: list[UploadFile] = File(default=[]),
+    # images: Annotated[UploadFile], File() = [],
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ProductResponse]:
-    product_service = ProductService(
-        db=db,
+
+    payload = ProductCreate(
+        name=name,
+        sku=sku,
+        category_name=category_name,
+        price=price,
+        stock=stock,
+        status=status,
+        description=description,
     )
+
+    product_service = ProductService(db=db)
 
     product = await product_service.create_product(
         payload=payload,
+        images=images,
     )
 
     return ApiResponse(
-        message="Product created successfully", data=to_product_response(product)
+        message="Product created successfully",
+        data=to_product_response(product),
     )
 
 

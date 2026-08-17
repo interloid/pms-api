@@ -10,8 +10,17 @@ from app.core.logging import get_logger
 from app.core.oauth.client import get_oauth_client
 from app.core.oauth.config import OAUTH_PROVIDERS
 from app.core.oauth.state import generate_oauth_state
+from app.core.passcode import (
+    delete_passcode,
+    delete_passcode_attempts,
+    generate_passcode,
+    get_passcode,
+    get_passcode_attempts,
+    increment_passcode_attempts,
+    store_passcode,
+)
 from app.core.security import (
-    hash_passcode,
+    verify_passcode,
     verify_password,
 )
 from app.core.settings import settings
@@ -32,10 +41,10 @@ from app.repositories import (
 from app.schemas.auth_schema import (
     LoginRequest,
     LoginResponse,
-    PasscodeLoginRequest,
 )
 from app.schemas.response import ApiResponse
 from app.schemas.user_schema import UserResponse
+from app.services.email_services import send_passcode_email
 from app.utils.helpers import utc_now
 
 logger = get_logger(__name__)
@@ -168,44 +177,126 @@ class AuthService:
                 )
                 raise UnauthorizedException(message="Invalid session")
 
-            return user
+            # return user
 
         except Exception:
             # await self._rollback()
             logger.exception("Unexpected error")
             raise
 
-        # return ApiResponse[LoginResponse](
-        #     message="Session retrieved successfully",
-        #     data=LoginResponse(
-        #         session_id=session.id,
-        #         user=UserResponse(
-        #             id=user.id,
-        #             email=user.email,
-        #             first_name=user.first_name,
-        #             last_name=user.last_name,
-        #             is_active=user.is_active,
-        #         ),
-        #     ),
-        # )
+        return ApiResponse[LoginResponse](
+            message="Session retrieved successfully",
+            data=LoginResponse(
+                session_id=session.id,
+                user=UserResponse(
+                    id=user.id,
+                    email=user.email,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    is_active=user.is_active,
+                ),
+            ),
+        )
 
-    async def login_passcode(self, login_data: PasscodeLoginRequest):
+    async def request_passcode(
+        self,
+        *,
+        email: str,
+        redis: Redis,
+    ) -> None:
+
+        user = await self.user_repo.get_by_email(email)
+
+        if user is not None and not user.is_active:
+            raise UnauthorizedException(
+                message="Invalid or expired passcode.",
+            )
+
+        await delete_passcode_attempts(
+            redis=redis,
+            email=email,
+        )
+
+        passcode = generate_passcode()
+
+        await store_passcode(
+            redis=redis,
+            email=email,
+            passcode=passcode,
+        )
+
+        await send_passcode_email(
+            to_email=email,
+            first_name=user.first_name if user else "User",
+            passcode=passcode,
+            expiry_minutes=5,
+        )
+
+    async def verify_email_passcode(
+        self,
+        *,
+        email: str,
+        passcode: str,
+        redis: Redis,
+    ) -> ApiResponse[LoginResponse]:
 
         try:
-            passcode_hash = hash_passcode(login_data.passcode)
+            user = await self.user_repo.get_by_email(email)
 
-            user = await self.user_repo.get_by_passcode_hash(passcode_hash)
+            if user is not None or not user.is_active:
+                logger.warning("Invalid email passcode verification attempt")
 
-            if user is None:
-                logger.warning("Invalid passcode login attempt")
-                raise UnauthorizedException(message="Invalid passcode. Try again.")
-
-            if not user.is_active:
-                logger.warning(
-                    "Passcode login failed: inactive user | user_id=%s",
-                    user.id,
+                raise UnauthorizedException(
+                    message="Invalid or expired passcode.",
                 )
-                raise UnauthorizedException(message="Invalid passcode. Try again.")
+
+            attempts = await get_passcode_attempts(
+                redis=redis,
+                email=email,
+            )
+
+            if attempts >= settings.PASSCODE_MAX_ATTEMPTS:
+                logger.warning(
+                    "Passcode verification attempts exceeded | email=%s",
+                    email,
+                )
+
+                raise UnauthorizedException(
+                    message="Too many attempts. Request a new passcode.",
+                )
+
+            stored_hash = await get_passcode(
+                redis=redis,
+                email=email,
+            )
+
+            if stored_hash is None:
+                raise UnauthorizedException(
+                    message="Invalid or expired passcode.",
+                )
+
+            if not verify_passcode(
+                passcode,
+                stored_hash,
+            ):
+                await increment_passcode_attempts(
+                    redis=redis,
+                    email=email,
+                )
+
+                raise UnauthorizedException(
+                    message="Invalid or expired passcode.",
+                )
+
+            await delete_passcode(
+                redis=redis,
+                email=email,
+            )
+
+            await delete_passcode_attempts(
+                redis=redis,
+                email=email,
+            )
 
             session = Session(
                 user_id=user.id,
@@ -225,7 +316,9 @@ class AuthService:
 
         except Exception:
             await self._rollback()
-            logger.exception("Unexpected error")
+
+            logger.exception("Unexpected error during email passcode verification")
+
             raise
 
         return ApiResponse[LoginResponse](
@@ -399,8 +492,6 @@ class AuthService:
             elif provider == "microsoft":
                 provider_user_id = userinfo["sub"]
 
-                # Microsoft OIDC userinfo may provide the email
-                # through either `email` or `preferred_username`.
                 email = userinfo.get("email") or userinfo.get("preferred_username")
 
                 if not email:
