@@ -19,11 +19,8 @@ class BaseService[T]:
         self.db = db
 
     @staticmethod
-    def validate_pagination(
-        *,
-        page: int,
-        page_size: int,
-    ) -> None:
+    def validate_pagination(*, page: int, page_size: int) -> None:
+
         if page < PaginationEnum.DEFAULT_PAGE:
             raise BadRequestException(
                 message="Page must be greater than or equal to 1",
@@ -43,28 +40,19 @@ class BaseService[T]:
             )
 
     @staticmethod
-    def calculate_offset(
-        *,
-        page: int,
-        page_size: int,
-    ) -> int:
+    def calculate_offset(*, page: int, page_size: int) -> int:
         return (page - 1) * page_size
 
     @staticmethod
-    def calculate_total_pages(
-        *,
-        total: int,
-        page_size: int,
-    ) -> int:
+    def calculate_total_pages(*, total: int, page_size: int) -> int:
         if total == 0:
             return 0
 
         return ceil(total / page_size)
 
     @staticmethod
-    def validate_sort_order(
-        sort_order: str,
-    ) -> str:
+    def validate_sort_order(sort_order: str) -> str:
+
         normalized_order = sort_order.strip().lower()
 
         if normalized_order not in {"asc", "desc"}:
@@ -81,6 +69,7 @@ class BaseService[T]:
         sort_fields: Mapping[str, Any],
         default_sort: str,
     ) -> Any:
+
         normalized_sort = sort_by.strip().lower()
 
         sort_column = sort_fields.get(normalized_sort)
@@ -89,11 +78,7 @@ class BaseService[T]:
             sort_column = sort_fields.get(default_sort)
 
         if sort_column is None:
-            raise BadRequestException(
-                message="Invalid sort field",
-                # Your current BadRequestException does not accept
-                # details, so keep this simple for now.
-            )
+            raise BadRequestException(message="Invalid sort field")
 
         return sort_column
 
@@ -138,14 +123,6 @@ class BaseService[T]:
         page: int,
         page_size: int,
     ) -> tuple[list[T], int]:
-        """
-        Execute a SELECT statement with pagination and return:
-
-            (items, total)
-
-        The supplied statement should contain all filtering conditions.
-        Sorting should normally already be applied before this method.
-        """
 
         self.validate_pagination(
             page=page,
