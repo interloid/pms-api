@@ -13,7 +13,6 @@ from app.models.category_model import Category
 from app.models.product_model import Product
 from app.utils.helpers import utc_now
 
-
 fake = Faker()
 
 random.seed(42)
@@ -118,10 +117,7 @@ def generate_product_name() -> str:
         "Action Camera",
     ]
 
-    return (
-        f"{random.choice(brands)} "
-        f"{random.choice(product_types)}"
-    )
+    return f"{random.choice(brands)} {random.choice(product_types)}"
 
 
 def generate_sku(index: int) -> str:
@@ -135,7 +131,6 @@ async def seed_categories(
     categories: list[Category] = []
 
     for name in CATEGORY_NAMES:
-
         result = await session.execute(
             select(Category).where(
                 Category.name == name,
@@ -181,7 +176,6 @@ async def seed_products(
     total_products = SEED_DAYS * PRODUCTS_PER_DAY
 
     for _ in range(total_products):
-
         sku = generate_sku(
             sku_counter,
         )
@@ -212,9 +206,7 @@ async def seed_products(
             500,
         )
 
-        price = Decimal(
-            f"{random.uniform(9.99, 2499.99):.2f}"
-        )
+        price = Decimal(f"{random.uniform(9.99, 2499.99):.2f}")
 
         product_status = random.choice(
             PRODUCT_STATUSES,
@@ -254,7 +246,6 @@ async def seed_products(
 
 async def seed():
     async with SessionLocal() as session:
-
         try:
             print("Starting database seed...")
 
@@ -266,10 +257,7 @@ async def seed():
                 session,
             )
 
-            print(
-                f"Categories available: "
-                f"{len(categories)}"
-            )
+            print(f"Categories available: {len(categories)}")
 
             # --------------------------------------------------
             # Products
@@ -289,22 +277,13 @@ async def seed():
             print()
             print("Seed completed successfully.")
             print("--------------------------------")
-            print(
-                f"Categories: {len(categories)}"
-            )
-            print(
-                f"Products created: {len(products)}"
-            )
-            print(
-                f"Products skipped: {skipped}"
-            )
-            print(
-                "Product images: 0"
-            )
+            print(f"Categories: {len(categories)}")
+            print(f"Products created: {len(products)}")
+            print(f"Products skipped: {skipped}")
+            print("Product images: 0")
             print("--------------------------------")
             print(
-                "You can now upload product images "
-                "through the image upload endpoint."
+                "You can now upload product images through the image upload endpoint."
             )
 
         except Exception:
@@ -314,5 +293,3 @@ async def seed():
 
 if __name__ == "__main__":
     asyncio.run(seed())
-    
-    

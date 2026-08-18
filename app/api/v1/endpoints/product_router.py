@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_user
 from app.core.constants import (
     PaginationEnum,
     ProductStatusEnum,
@@ -24,12 +25,9 @@ from app.schemas.response import (
     PaginationMeta,
 )
 from app.services.product_service import ProductService
-from app.api.dependencies import get_current_user
 
 router = APIRouter(
-    prefix="/products",
-    tags=["Products"],
-    dependencies=[Depends(get_current_user)]
+    prefix="/products", tags=["Products"], dependencies=[Depends(get_current_user)]
 )
 
 
