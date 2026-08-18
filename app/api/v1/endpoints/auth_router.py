@@ -128,16 +128,32 @@ async def request_passcode(
 @router.post("/passcode/verify")
 async def verify_passcode(
     login_data: PasscodeVerifyRequest,
+    response: Response, 
     redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
     service = AuthService(db)
 
-    return await service.verify_email_passcode(
+    result = await service.verify_email_passcode(
         email=login_data.email,
         passcode=login_data.passcode,
         redis=redis,
     )
+
+    if result.data is None:
+        raise InternalServerException(
+            message="Login response data is missing",
+        )
+
+    response.set_cookie(
+        key="session",
+        value=str(result.data.session_id),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+
+    return result
 
 
 @router.get(
@@ -198,9 +214,9 @@ async def omniauth_callback(
 
     response.set_cookie(
         key="session",
-        value=session_id,
+        value=str(session_id),
         httponly=True,
-        secure=False,
+        secure=True,
         samesite="lax",
     )
 

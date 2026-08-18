@@ -243,7 +243,7 @@ class AuthService:
         try:
             user = await self.user_repo.get_by_email(email)
 
-            if user is not None or not user.is_active:
+            if user is not None and not user.is_active:
                 logger.warning("Invalid email passcode verification attempt")
 
                 raise UnauthorizedException(
@@ -297,6 +297,16 @@ class AuthService:
                 redis=redis,
                 email=email,
             )
+            if user is None:
+                user = User(
+                    email=email,
+                    first_name="User",
+                    last_name="",
+                    is_active=True,
+                )
+                
+                await self.user_repo.create(user)
+               
 
             session = Session(
                 user_id=user.id,
