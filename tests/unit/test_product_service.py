@@ -1,0 +1,472 @@
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
+
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+from app.services.product_service import ProductService
+from app.models.product_model import Product
+from app.exceptions.custom import NotFoundException, ConflictException
+from app.schemas.product_schema import ProductUpdate
+from app.models.category_model import Category
+
+
+@pytest.mark.asyncio
+async def test_get_product_returns_product():
+    db = MagicMock()
+    
+    service = ProductService(db)
+    
+    product_id = uuid4()
+    product = Product(
+        id = product_id,
+        name = "iphone 15",
+        sku = "IPHONE-15",
+    )
+    
+    service.product_repo.get_by_id= AsyncMock(
+        return_value = product,
+    )
+    
+    result = await service.get_product(product_id=product_id)
+    
+    assert result is product
+    
+    service.product_repo.get_by_id.assert_awaited_once_with(
+        product_id=product_id,
+    )
+    
+    
+@pytest.mark.asyncio
+async def test_get_product_raises_not_found_when_product_does_not_exist():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    product_id = uuid4()
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=None,
+    )
+
+    with pytest.raises(NotFoundException) as exc_info:
+        await service.get_product(
+            product_id=product_id,
+        )
+
+    assert str(exc_info.value) == "Product not found"
+
+    service.product_repo.get_by_id.assert_awaited_once_with(
+        product_id=product_id,
+    )
+
+@pytest.mark.asyncio
+async def test_delete_product_deletes_existing_product():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    product_id = uuid4()
+
+    product = Product(
+        id=product_id,
+        name="iphone 15",
+        sku="IPHONE-15",
+    )
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=product,
+    )
+
+    service.product_repo.delete = AsyncMock()
+
+    result = await service.delete_product(
+        product_id=product_id,
+    )
+
+    assert result is None
+
+    service.product_repo.get_by_id.assert_awaited_once_with(
+        product_id=product_id,
+    )
+
+    service.product_repo.delete.assert_awaited_once_with(
+        product=product,
+    )
+    
+    
+@pytest.mark.asyncio
+async def test_delete_product_raises_not_found_when_product_does_not_exist():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    product_id = uuid4()
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=None,
+    )
+
+    service.product_repo.delete = AsyncMock()
+
+    with pytest.raises(NotFoundException) as exc_info:
+        await service.delete_product(
+            product_id=product_id,
+        )
+
+    assert str(exc_info.value) == "Product not found"
+
+    service.product_repo.get_by_id.assert_awaited_once_with(
+        product_id=product_id,
+    )
+
+    service.product_repo.delete.assert_not_awaited()
+ 
+
+    
+#Product not found
+    
+@pytest.mark.asyncio
+async def test_update_product_raises_not_found_when_product_does_not_exist():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    product_id = uuid4()
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=None,
+    )
+
+    service.product_repo.update = AsyncMock()
+
+    payload = ProductUpdate(
+        name="Updated Product",
+    )
+
+    with pytest.raises(NotFoundException) as exc_info:
+        await service.update_product(
+            product_id=product_id,
+            payload=payload,
+        )
+
+    assert str(exc_info.value) == "Product not found"
+
+    service.product_repo.get_by_id.assert_awaited_once_with(
+        product_id=product_id,
+    )
+
+    service.product_repo.update.assert_not_awaited()
+
+
+#Empty update payload
+    
+@pytest.mark.asyncio
+async def test_update_product_returns_existing_product_when_no_updates():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    product_id = uuid4()
+
+    product = Product(
+        id=product_id,
+        name="iPhone 15",
+        sku="IPHONE-15",
+    )
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=product,
+    )
+
+    service.product_repo.update = AsyncMock()
+
+    payload = ProductUpdate()
+
+    result = await service.update_product(
+        product_id=product_id,
+        payload=payload,
+    )
+
+    assert result is product
+
+    service.product_repo.update.assert_not_awaited()
+
+
+#Normal update
+    
+@pytest.mark.asyncio
+async def test_update_product_updates_product():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    product_id = uuid4()
+
+    product = Product(
+        id=product_id,
+        name="iPhone 15",
+        sku="IPHONE-15",
+    )
+
+    updated_product = Product(
+        id=product_id,
+        name="iPhone 15 Pro",
+        sku="IPHONE-15",
+    )
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=product,
+    )
+
+    service.product_repo.update = AsyncMock(
+        return_value=updated_product,
+    )
+
+    payload = ProductUpdate(
+        name="iPhone 15 Pro",
+    )
+
+    result = await service.update_product(
+        product_id=product_id,
+        payload=payload,
+    )
+
+    assert result is updated_product
+
+    assert product.name == "iPhone 15 Pro"
+
+    service.product_repo.update.assert_awaited_once_with(
+        product=product,
+    )
+    
+    
+ # SKU conflict 
+  
+@pytest.mark.asyncio
+async def test_update_product_raises_conflict_when_sku_already_exists():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    product_id = uuid4()
+    existing_product_id = uuid4()
+
+    product = Product(
+        id=product_id,
+        name="iPhone 15",
+        sku="IPHONE-15",
+    )
+
+    existing_product = Product(
+        id=existing_product_id,
+        name="Samsung",
+        sku="SAMSUNG-S23",
+    )
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=product,
+    )
+
+    service.product_repo.get_by_sku = AsyncMock(
+        return_value=existing_product,
+    )
+
+    service.product_repo.update = AsyncMock()
+
+    payload = ProductUpdate(
+        sku="SAMSUNG-S23",
+    )
+
+    with pytest.raises(ConflictException) as exc_info:
+        await service.update_product(
+            product_id=product_id,
+            payload=payload,
+        )
+
+    assert str(exc_info.value) == (
+        "Product with this SKU already exists"
+    )
+
+    service.product_repo.get_by_sku.assert_awaited_once_with(
+        sku="SAMSUNG-S23",
+    )
+
+    service.product_repo.update.assert_not_awaited()
+
+
+#Category doesn't exist
+    
+@pytest.mark.asyncio
+async def test_update_product_raises_not_found_when_category_does_not_exist():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    product_id = uuid4()
+
+    product = Product(
+        id=product_id,
+        name="iPhone 15",
+        sku="IPHONE-15",
+    )
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=product,
+    )
+
+    service.category_repo.get_by_name = AsyncMock(
+        return_value=None,
+    )
+
+    service.product_repo.update = AsyncMock()
+
+    payload = ProductUpdate(
+        category_name="Non Existing Category",
+    )
+
+    with pytest.raises(NotFoundException) as exc_info:
+        await service.update_product(
+            product_id=product_id,
+            payload=payload,
+        )
+
+    assert str(exc_info.value) == "Category not found"
+
+    service.category_repo.get_by_name.assert_awaited_once_with(
+        name="Non Existing Category",
+    )
+
+    service.product_repo.update.assert_not_awaited()
+
+
+#Category exists
+    
+@pytest.mark.asyncio
+async def test_update_product_updates_category():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    product_id = uuid4()
+    category_id = uuid4()
+
+    product = Product(
+        id=product_id,
+        name="iPhone 15",
+        sku="IPHONE-15",
+    )
+
+    category = Category(
+        id=category_id,
+        name="Electronics",
+    )
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=product,
+    )
+
+    service.category_repo.get_by_name = AsyncMock(
+        return_value=category,
+    )
+
+    service.product_repo.update = AsyncMock(
+        return_value=product,
+    )
+
+    payload = ProductUpdate(
+        category_name=" Electronics ",
+    )
+
+    result = await service.update_product(
+        product_id=product_id,
+        payload=payload,
+    )
+
+    assert result is product
+    assert product.category_id == category_id
+
+    service.category_repo.get_by_name.assert_awaited_once_with(
+        name="Electronics",
+    )
+
+    service.product_repo.update.assert_awaited_once_with(
+        product=product,
+    )
+
+
+#IntegrityError
+
+@pytest.mark.asyncio
+async def test_update_product_converts_integrity_error_to_conflict():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    product_id = uuid4()
+
+    product = Product(
+        id=product_id,
+        name="iPhone 15",
+        sku="IPHONE-15",
+    )
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=product,
+    )
+
+    service.product_repo.update = AsyncMock(
+        side_effect=IntegrityError(
+            statement="UPDATE products",
+            params={},
+            orig=Exception("duplicate"),
+        ),
+    )
+
+    payload = ProductUpdate(
+        name="Updated Product",
+    )
+
+    with pytest.raises(ConflictException) as exc_info:
+        await service.update_product(
+            product_id=product_id,
+            payload=payload,
+        )
+
+    assert str(exc_info.value) == (
+        "Product could not be updated because of a conflicting resource"
+    )
+    
+
+#list_products with default parameters
+   
+@pytest.mark.asyncio
+async def test_list_products_returns_products_and_total():
+    db = MagicMock()
+
+    service = ProductService(db)
+
+    products = [
+        Product(
+            id=uuid4(),
+            name="iPhone 15",
+            sku="IPHONE-15",
+        ),
+        Product(
+            id=uuid4(),
+            name="Samsung S23",
+            sku="SAMSUNG-S23",
+        ),
+    ]
+
+    service.paginate = AsyncMock(
+        return_value=(products, 2),
+    )
+
+    result = await service.list_products()
+
+    assert result == (products, 2)
+
+    service.paginate.assert_awaited_once()
+    
+    

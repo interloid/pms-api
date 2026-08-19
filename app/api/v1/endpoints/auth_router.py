@@ -52,7 +52,9 @@ async def login(
         value=str(result.data.session_id),
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="none",
+        path='/',
+        max_age=86400,
     )
 
     return result
@@ -77,6 +79,7 @@ async def logout(
 
     response.delete_cookie(
         key="session",
+        path="/",
     )
 
     return result
@@ -150,7 +153,9 @@ async def verify_passcode(
         value=str(result.data.session_id),
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="none",
+        path='/',
+        max_age=86400,
     )
 
     return result
@@ -217,7 +222,9 @@ async def omniauth_callback(
         value=str(session_id),
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="none",
+        path='/',
+        max_age=86400,
     )
 
     return response

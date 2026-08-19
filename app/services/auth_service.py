@@ -149,7 +149,6 @@ class AuthService:
 
     async def get_current_session(self, session_id: UUID):
 
-        try:
             session = await self.session_repo.get_active_by_id(
                 session_id, now=utc_now()
             )
@@ -177,26 +176,19 @@ class AuthService:
                 )
                 raise UnauthorizedException(message="Invalid session")
 
-            # return user
-
-        except Exception:
-            # await self._rollback()
-            logger.exception("Unexpected error")
-            raise
-
-        return ApiResponse[LoginResponse](
-            message="Session retrieved successfully",
-            data=LoginResponse(
-                session_id=session.id,
-                user=UserResponse(
-                    id=user.id,
-                    email=user.email,
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    is_active=user.is_active,
+            return ApiResponse[LoginResponse](
+                message="Session retrieved successfully",
+                data=LoginResponse(
+                    session_id=session.id,
+                    user=UserResponse(
+                        id=user.id,
+                        email=user.email,
+                        first_name=user.first_name,
+                        last_name=user.last_name,
+                        is_active=user.is_active,
+                    ),
                 ),
-            ),
-        )
+            )
 
     async def request_passcode(
         self,
