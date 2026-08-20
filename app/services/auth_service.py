@@ -28,6 +28,7 @@ from app.exceptions.custom import (
     AppException,
     NotFoundException,
     UnauthorizedException,
+    ConflictException,
 )
 from app.models.session_model import Session
 from app.models.user_identity_model import UserIdentity
@@ -494,7 +495,7 @@ class AuthService:
             elif provider == "microsoft":
                 provider_user_id = userinfo["sub"]
 
-                email = userinfo.get("email") or userinfo.get("preferred_username")
+                email = userinfo.get("email")
 
                 if not email:
                     raise UnauthorizedException(
@@ -528,14 +529,21 @@ class AuthService:
             else:
                 user = await self.user_repo.get_by_email(email)
 
-                if user is None:
-                    user = User(
-                        email=email,
-                        first_name=first_name,
-                        last_name=last_name,
+                if user is not None:
+                    raise ConflictException(
+                        message=(
+                            "An account with this email already exists. "
+                            "Kindly sign in with the existing account."
+                        ),
                     )
 
-                    user = await self.user_repo.create(user)
+                user = User(
+                    email=email,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+
+                user = await self.user_repo.create(user)
 
                 identity = UserIdentity(
                     user_id=user.id,
@@ -545,6 +553,9 @@ class AuthService:
                 )
 
                 await self.user_identity_repo.create(identity)
+                
+            if not user.is_active:
+                raise UnauthorizedException(message="User account is inactive")
 
             logger.info(
                 "OAuth user info | provider=%s provider_user_id=%s email=%s",
@@ -583,37 +594,6 @@ class AuthService:
 
             raise
 
-    # async def get_google_user_info(
-    #     self,
-    #     access_token: str,
-    # ) -> dict[str, Any]:
-
-    #     try:
-    #         client = get_oauth_client()
-
-    #         response = await client.get(
-    #             "https://openidconnect.googleapis.com/v1/userinfo",
-    #             token={
-    #                 "access_token": access_token,
-    #                 "token_type": "Bearer",
-    #             },
-    #         )
-
-    #         response.raise_for_status()
-
-    #         user_info = response.json()
-
-    #         logger.info(
-    #             "Google user information retrieved successfully",
-    #         )
-
-    #         return user_info
-
-    #     except Exception:
-    #         logger.exception(
-    #             "Failed to retrieve Google user information",
-    #         )
-    #         raise
 
     async def get_github_email(self, client: AsyncOAuth2Client) -> str:
         response = await client.get(

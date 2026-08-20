@@ -5,7 +5,9 @@ from app.core.s3 import S3Service
 from app.exceptions.custom import NotFoundException
 from app.models.product_image_model import ProductImage
 from app.repositories.product_image_repo import ProductImageRepository
+from app.core.logging import get_logger
 
+logger = get_logger(__name__)
 
 class ProductImageService:
     def __init__(
@@ -43,7 +45,7 @@ class ProductImageService:
             product_id=product_id,
             url=url,
             object_key=object_key,
-            is_primary=is_primary,
+            is_primary=False,
         )
 
         image = await self.product_image_repo.create(image)
@@ -101,7 +103,23 @@ class ProductImageService:
             image_id=image_id,
             product_id=product_id,
         )
-
-        await self.s3_service.delete_file(object_key=image.object_key)
-
+        
+        object_key = image.object_key
+        
         await self.product_image_repo.delete(image)
+
+        await self.db.commit()
+        
+        try:
+
+            await self.s3_service.delete_file(
+                object_key=object_key
+            )
+            
+        except Exception:
+            logger.exception(
+                "Failed to delete S3 object after deleting "
+                "ProductImage | object_key=%s",
+                object_key,
+            )
+

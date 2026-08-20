@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.logging import get_logger
 from app.core.constants import (
     ProductImageConstants,
     ProductStatusEnum,
@@ -25,7 +26,7 @@ from app.schemas.product_schema import ProductCreate, ProductUpdate
 from app.services.base_service import BaseService
 from app.services.product_image_service import ProductImageService
 
-
+logger = get_logger(__name__)
 class ProductService(BaseService[Product]):
     SORT_FIELDS = {
         "name": Product.name,
@@ -81,17 +82,20 @@ class ProductService(BaseService[Product]):
                         "Allowed types: JPEG, PNG, and WebP"
                     ),
                 )
+            if image.size is None:
+                raise BadRequestException(
+                    message=(
+                        f"Could not determine size for '{image.filename}'"
+                    ),
+                )
 
-            content = await image.read()
-
-            if len(content) > ProductImageConstants.MAX_FILE_SIZE:
+            if image.size > ProductImageConstants.MAX_FILE_SIZE:
                 raise BadRequestException(
                     message=(
                         f"Image '{image.filename}' exceeds the maximum size of 5 MB"
                     ),
                 )
 
-            await image.seek(0)
 
     async def create_product(
         self, payload: ProductCreate, images: list[UploadFile]
@@ -122,6 +126,8 @@ class ProductService(BaseService[Product]):
             status=payload.status,
             description=payload.description,
         )
+        
+        uploaded_object_keys: list[str] = []
 
         try:
             product = await self.product_repo.create(
@@ -129,12 +135,16 @@ class ProductService(BaseService[Product]):
             )
 
             for index, image in enumerate(images):
-                await self.product_image_service.upload_image(
+                product_image = await self.product_image_service.upload_image(
                     product_id=product.id,
                     file=image.file,
                     filename=image.filename or "image",
                     content_type=image.content_type or "application/octet-stream",
                     is_primary=(index == 0),
+                )
+                
+                uploaded_object_keys.append(
+                    product_image.object_key
                 )
 
             product = await self.product_repo.get_by_id(
@@ -146,12 +156,22 @@ class ProductService(BaseService[Product]):
 
             return product
 
-        except IntegrityError as exc:
+        except Exception:
             await self.db.rollback()
+            
+            for object_key in uploaded_object_keys:
+                try:
+                    await self.s3_service.delete_file(
+                        object_key=object_key,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to clean up S3 object after "
+                        "product creation failure | object_key=%s",
+                        object_key,
+                    )
+            raise
 
-            raise ConflictException(
-                message="Product with this SKU already exists"
-            ) from exc
 
     async def get_product(self, product_id: UUID) -> Product:
 
@@ -275,9 +295,7 @@ class ProductService(BaseService[Product]):
                 message="Product not found",
             )
 
-        updates = payload.model_dump(
-            exclude_unset=True,
-        )
+        updates = payload.model_dump(exclude_unset=True)
 
         if not updates:
             return product
@@ -331,5 +349,15 @@ class ProductService(BaseService[Product]):
 
         if product is None:
             raise NotFoundException(message="Product not found")
+        
+        images = await self.product_image_repo.get_by_product_id(
+            product_id=product_id,
+        )
+
+        for image in images:
+            await self.s3_service.delete_file(
+                object_key=image.object_key,
+            )
 
         await self.product_repo.delete(product=product)
+

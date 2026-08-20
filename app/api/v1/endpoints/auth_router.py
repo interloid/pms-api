@@ -54,7 +54,7 @@ async def login(
         secure=True,
         samesite="none",
         path='/',
-        max_age=86400,
+        max_age=settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60,
     )
 
     return result
@@ -63,26 +63,31 @@ async def login(
 @router.post("/logout")
 async def logout(
     response: Response,
-    session_id: UUID | None = Cookie(
+    session_id: str | None = Cookie(
         default=None,
         alias="session",
     ),
     db: AsyncSession = Depends(get_db),
 ):
     if session_id is not None:
-        service = AuthService(db)
-        result = await service.logout(session_id)
-    else:
-        result = {
-            "message": "Logged out successfully",
-        }
+        try:
+            parsed_session_id = UUID(session_id)
+        except ValueError:
+            parsed_session_id = None
+
+        if parsed_session_id is not None:
+            service = AuthService(db)
+            await service.logout(parsed_session_id)
+
 
     response.delete_cookie(
-        key="session",
+    key="session",
         path="/",
     )
 
-    return result
+    return ApiResponse(
+        message="Logged out successfully",
+    )
 
 
 @router.get("/session")
@@ -155,7 +160,7 @@ async def verify_passcode(
         secure=True,
         samesite="none",
         path='/',
-        max_age=86400,
+        max_age=settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60,
     )
 
     return result
@@ -224,7 +229,7 @@ async def omniauth_callback(
         secure=True,
         samesite="none",
         path='/',
-        max_age=86400,
+        max_age=settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60,
     )
 
     return response
