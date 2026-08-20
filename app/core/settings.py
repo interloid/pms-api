@@ -47,9 +47,8 @@ class Settings(BaseSettings):
     PASSCODE_LENGTH: int = 6
     PASSCODE_MAX_ATTEMPTS: int = 3
 
-    CORS_ORIGINS: str = "http://localhost:5173"
-
-    YOUR_REACT_URL: str = "http://localhost:5173/callback"
+    CORS_ORIGINS: str
+    YOUR_REACT_URL: str
 
     model_config = SettingsConfigDict(
         env_file=".env",
