@@ -1,50 +1,22 @@
-import pytest
-
-from sqlalchemy import column, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+from sqlalchemy import column, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.constants import PaginationEnum
-from app.utils.pagination import get_offset
-from app.services.base_service import BaseService
 from app.exceptions.custom import BadRequestException
+from app.services.base_service import BaseService
 
 
-def test_get_offset_first_page():
-    
-    result = get_offset(
-        page=1,
-        page_size=10,
-    )
-    
-    assert result == 0
-    
-def test_get_offset_second_page():
-    
-    result = get_offset(
-        page=2,
-        page_size=10,
-    )
-    
-    assert result == 10
-    
-def test_get_offset_third_page():
-    
-    result = get_offset(
-        page=3,
-        page_size=10,
-    )
-    
-    assert result == 20
-    
-    
 def test_calculate_offset_first_page():
     result = BaseService.calculate_offset(
         page=1,
         page_size=10,
     )
     assert result == 0
-    
+
+
 def test_calculate_offset_second_page():
     result = BaseService.calculate_offset(
         page=2,
@@ -61,7 +33,8 @@ def test_calculate_offset_third_page():
     )
 
     assert result == 20
-    
+
+
 @pytest.mark.parametrize(
     ("total", "page_size", "expected_pages"),
     [
@@ -83,15 +56,19 @@ def test_calculate_total_pages(
     )
 
     assert result == expected_pages
-    
-    
+
+
 @pytest.mark.parametrize(
     ("page", "page_size", "expected_message"),
     [
         (0, 10, "Page must be greater than or equal to 1"),
         (1, 0, "Page size must be greater than or equal to 1"),
-        (1, PaginationEnum.MAX_PAGE_SIZE + 1, f"Page size must be less than or equal to {PaginationEnum.MAX_PAGE_SIZE}"),
-    ]
+        (
+            1,
+            PaginationEnum.MAX_PAGE_SIZE + 1,
+            f"Page size must be less than or equal to {PaginationEnum.MAX_PAGE_SIZE}",
+        ),
+    ],
 )
 def test_validate_pagination_rejects_invalid_values(
     page: int,
@@ -105,7 +82,7 @@ def test_validate_pagination_rejects_invalid_values(
         )
 
     assert str(exc_info.value) == expected_message
-    
+
 
 def test_validate_pagination_accepts_valid_values():
     result = BaseService.validate_pagination(
@@ -116,17 +93,17 @@ def test_validate_pagination_accepts_valid_values():
 
 
 @pytest.mark.parametrize(
-    ("sort_order","expected_message"),
+    ("sort_order", "expected_message"),
     [
-        ("asc","asc"),
-        ("desc","desc"),
-        ("ASC","asc"),
-        ("DESC","desc"),
-        ("Asc","asc"),
-        ("Desc","desc"),
-        (" asc","asc"),
-        (" DESC ","desc"),
-    ]
+        ("asc", "asc"),
+        ("desc", "desc"),
+        ("ASC", "asc"),
+        ("DESC", "desc"),
+        ("Asc", "asc"),
+        ("Desc", "desc"),
+        (" asc", "asc"),
+        (" DESC ", "desc"),
+    ],
 )
 def test_validate_sort_order_accepts_valid_values(
     sort_order: str,
@@ -155,11 +132,9 @@ def test_validate_sort_order_rejects_invalid_values(
     with pytest.raises(BadRequestException) as exc_info:
         BaseService.validate_sort_order(sort_order)
 
-    assert str(exc_info.value) == (
-        "Sort order must be either 'asc' or 'desc'"
-    )
-    
-    
+    assert str(exc_info.value) == ("Sort order must be either 'asc' or 'desc'")
+
+
 @pytest.mark.parametrize(
     ("sort_by", "expected"),
     [
@@ -185,6 +160,7 @@ def test_resolve_sort_column_normalizes_sort_by(
 
     assert result == expected
 
+
 def test_resolve_sort_column_uses_default_when_sort_field_is_unknown():
     sort_fields = {
         "name": "NAME_COLUMN",
@@ -198,7 +174,8 @@ def test_resolve_sort_column_uses_default_when_sort_field_is_unknown():
     )
 
     assert result == "NAME_COLUMN"
-    
+
+
 def test_resolve_sort_column_rejects_invalid_sort_field():
     sort_fields = {
         "name": "NAME_COLUMN",
@@ -213,8 +190,8 @@ def test_resolve_sort_column_rejects_invalid_sort_field():
         )
 
     assert str(exc_info.value) == "Invalid sort field"
-    
-    
+
+
 @pytest.mark.parametrize(
     ("sort_order", "expected_sql"),
     [
@@ -329,9 +306,9 @@ def test_apply_filters_with_multiple_filters():
 async def test_paginate_returns_items_and_total():
     db = MagicMock(spec=AsyncSession)
     db.execute = AsyncMock
-    
+
     service = BaseService(db=db)
-    
+
     count_result = MagicMock()
     count_result.scalar_one.return_value = 25
 
@@ -359,5 +336,3 @@ async def test_paginate_returns_items_and_total():
 
     assert result == items
     assert total == 25
-    
-    

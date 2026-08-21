@@ -34,9 +34,7 @@ def test_google_config():
         "https://accounts.google.com/o/oauth2/v2/auth"
     )
 
-    assert GOOGLE_CONFIG.token_url == (
-        "https://oauth2.googleapis.com/token"
-    )
+    assert GOOGLE_CONFIG.token_url == ("https://oauth2.googleapis.com/token")
 
     assert GOOGLE_CONFIG.userinfo_url == (
         "https://openidconnect.googleapis.com/v1/userinfo"
@@ -52,21 +50,13 @@ def test_google_config():
 def test_microsoft_config():
     assert isinstance(MICROSOFT_CONFIG, OAuthProviderConfig)
 
-    assert "login.microsoftonline.com" in (
-        MICROSOFT_CONFIG.authorization_url
-    )
+    assert "login.microsoftonline.com" in (MICROSOFT_CONFIG.authorization_url)
 
-    assert "/oauth2/v2.0/authorize" in (
-        MICROSOFT_CONFIG.authorization_url
-    )
+    assert "/oauth2/v2.0/authorize" in (MICROSOFT_CONFIG.authorization_url)
 
-    assert "login.microsoftonline.com" in (
-        MICROSOFT_CONFIG.token_url
-    )
+    assert "login.microsoftonline.com" in (MICROSOFT_CONFIG.token_url)
 
-    assert "/oauth2/v2.0/token" in (
-        MICROSOFT_CONFIG.token_url
-    )
+    assert "/oauth2/v2.0/token" in (MICROSOFT_CONFIG.token_url)
 
     assert MICROSOFT_CONFIG.userinfo_url == (
         "https://graph.microsoft.com/oidc/userinfo"
@@ -86,13 +76,9 @@ def test_github_config():
         "https://github.com/login/oauth/authorize"
     )
 
-    assert GITHUB_CONFIG.token_url == (
-        "https://github.com/login/oauth/access_token"
-    )
+    assert GITHUB_CONFIG.token_url == ("https://github.com/login/oauth/access_token")
 
-    assert GITHUB_CONFIG.userinfo_url == (
-        "https://api.github.com/user"
-    )
+    assert GITHUB_CONFIG.userinfo_url == ("https://api.github.com/user")
 
     assert GITHUB_CONFIG.scopes == (
         "read:user",
@@ -112,5 +98,3 @@ def test_oauth_providers_map_to_correct_configs():
     assert OAUTH_PROVIDERS["google"] is GOOGLE_CONFIG
     assert OAUTH_PROVIDERS["microsoft"] is MICROSOFT_CONFIG
     assert OAUTH_PROVIDERS["github"] is GITHUB_CONFIG
-    
-    

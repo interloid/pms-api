@@ -1,42 +1,43 @@
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.services.product_service import ProductService
-from app.models.product_model import Product
-from app.exceptions.custom import NotFoundException, ConflictException
-from app.schemas.product_schema import ProductUpdate
+from app.exceptions.custom import ConflictException, NotFoundException
 from app.models.category_model import Category
+from app.models.product_model import Product
+from app.schemas.product_schema import ProductUpdate
+from app.services.product_service import ProductService
 
 
 @pytest.mark.asyncio
 async def test_get_product_returns_product():
     db = MagicMock()
-    
+
     service = ProductService(db)
-    
+
     product_id = uuid4()
     product = Product(
-        id = product_id,
-        name = "iphone 15",
-        sku = "IPHONE-15",
+        id=product_id,
+        name="iphone 15",
+        sku="IPHONE-15",
     )
-    
-    service.product_repo.get_by_id= AsyncMock(
-        return_value = product,
+
+    service.product_repo.get_by_id = AsyncMock(
+        return_value=product,
     )
-    
+
     result = await service.get_product(product_id=product_id)
-    
+
     assert result is product
-    
+
     service.product_repo.get_by_id.assert_awaited_once_with(
         product_id=product_id,
     )
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_product_raises_not_found_when_product_does_not_exist():
     db = MagicMock()
@@ -60,6 +61,7 @@ async def test_get_product_raises_not_found_when_product_does_not_exist():
         product_id=product_id,
     )
 
+
 @pytest.mark.asyncio
 async def test_delete_product_deletes_existing_product():
     db = MagicMock()
@@ -78,7 +80,7 @@ async def test_delete_product_deletes_existing_product():
         return_value=product,
     )
 
-    service.product_repo.delete = AsyncMock()
+    service.product_repo.delete = MagicMock()
 
     result = await service.delete_product(
         product_id=product_id,
@@ -93,8 +95,8 @@ async def test_delete_product_deletes_existing_product():
     service.product_repo.delete.assert_awaited_once_with(
         product=product,
     )
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_delete_product_raises_not_found_when_product_does_not_exist():
     db = MagicMock()
@@ -121,11 +123,11 @@ async def test_delete_product_raises_not_found_when_product_does_not_exist():
     )
 
     service.product_repo.delete.assert_not_awaited()
- 
 
-    
-#Product not found
-    
+
+# Product not found
+
+
 @pytest.mark.asyncio
 async def test_update_product_raises_not_found_when_product_does_not_exist():
     db = MagicMock()
@@ -148,6 +150,7 @@ async def test_update_product_raises_not_found_when_product_does_not_exist():
         await service.update_product(
             product_id=product_id,
             payload=payload,
+            images=[],
         )
 
     assert str(exc_info.value) == "Product not found"
@@ -159,8 +162,9 @@ async def test_update_product_raises_not_found_when_product_does_not_exist():
     service.product_repo.update.assert_not_awaited()
 
 
-#Empty update payload
-    
+# Empty update payload
+
+
 @pytest.mark.asyncio
 async def test_update_product_returns_existing_product_when_no_updates():
     db = MagicMock()
@@ -175,26 +179,32 @@ async def test_update_product_returns_existing_product_when_no_updates():
         sku="IPHONE-15",
     )
 
+    payload = ProductUpdate()
+
     service.product_repo.get_by_id = AsyncMock(
         return_value=product,
     )
 
     service.product_repo.update = AsyncMock()
 
-    payload = ProductUpdate()
-
     result = await service.update_product(
         product_id=product_id,
         payload=payload,
+        images=[],
     )
 
     assert result is product
 
+    service.product_repo.get_by_id.assert_awaited_once_with(
+        product_id=product_id,
+    )
+
     service.product_repo.update.assert_not_awaited()
 
 
-#Normal update
-    
+# Normal update
+
+
 @pytest.mark.asyncio
 async def test_update_product_updates_product():
     db = MagicMock()
@@ -206,12 +216,14 @@ async def test_update_product_updates_product():
     product = Product(
         id=product_id,
         name="iPhone 15",
+        price=Decimal("799.99"),
         sku="IPHONE-15",
     )
 
     updated_product = Product(
         id=product_id,
         name="iPhone 15 Pro",
+        price=Decimal("799.99"),
         sku="IPHONE-15",
     )
 
@@ -225,11 +237,14 @@ async def test_update_product_updates_product():
 
     payload = ProductUpdate(
         name="iPhone 15 Pro",
+        price=Decimal("999.99"),
+        stock=15,
     )
 
     result = await service.update_product(
         product_id=product_id,
         payload=payload,
+         images=[],
     )
 
     assert result is updated_product
@@ -239,10 +254,11 @@ async def test_update_product_updates_product():
     service.product_repo.update.assert_awaited_once_with(
         product=product,
     )
-    
-    
- # SKU conflict 
-  
+
+
+# SKU conflict
+
+
 @pytest.mark.asyncio
 async def test_update_product_raises_conflict_when_sku_already_exists():
     db = MagicMock()
@@ -282,10 +298,13 @@ async def test_update_product_raises_conflict_when_sku_already_exists():
         await service.update_product(
             product_id=product_id,
             payload=payload,
+            images=[],
         )
 
-    assert str(exc_info.value) == (
-        "Product with this SKU already exists"
+    assert str(exc_info.value) == ("Product with this SKU already exists")
+    
+    service.product_repo.get_by_id.assert_awaited_once_with(
+        product_id=product_id,
     )
 
     service.product_repo.get_by_sku.assert_awaited_once_with(
@@ -295,8 +314,9 @@ async def test_update_product_raises_conflict_when_sku_already_exists():
     service.product_repo.update.assert_not_awaited()
 
 
-#Category doesn't exist
-    
+# Category doesn't exist
+
+
 @pytest.mark.asyncio
 async def test_update_product_raises_not_found_when_category_does_not_exist():
     db = MagicMock()
@@ -329,6 +349,7 @@ async def test_update_product_raises_not_found_when_category_does_not_exist():
         await service.update_product(
             product_id=product_id,
             payload=payload,
+            images=[],
         )
 
     assert str(exc_info.value) == "Category not found"
@@ -340,8 +361,9 @@ async def test_update_product_raises_not_found_when_category_does_not_exist():
     service.product_repo.update.assert_not_awaited()
 
 
-#Category exists
-    
+# Category exists
+
+
 @pytest.mark.asyncio
 async def test_update_product_updates_category():
     db = MagicMock()
@@ -381,6 +403,7 @@ async def test_update_product_updates_category():
     result = await service.update_product(
         product_id=product_id,
         payload=payload,
+        images=[],
     )
 
     assert result is product
@@ -395,7 +418,8 @@ async def test_update_product_updates_category():
     )
 
 
-#IntegrityError
+# IntegrityError
+
 
 @pytest.mark.asyncio
 async def test_update_product_converts_integrity_error_to_conflict():
@@ -431,15 +455,17 @@ async def test_update_product_converts_integrity_error_to_conflict():
         await service.update_product(
             product_id=product_id,
             payload=payload,
+            images=[],
         )
 
     assert str(exc_info.value) == (
         "Product could not be updated because of a conflicting resource"
     )
-    
 
-#list_products with default parameters
-   
+
+# list_products with default parameters
+
+
 @pytest.mark.asyncio
 async def test_list_products_returns_products_and_total():
     db = MagicMock()
@@ -468,5 +494,3 @@ async def test_list_products_returns_products_and_total():
     assert result == (products, 2)
 
     service.paginate.assert_awaited_once()
-    
-    

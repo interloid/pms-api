@@ -32,8 +32,8 @@ async def test_create_returns_image():
     db.add.assert_called_once_with(image)
     db.flush.assert_awaited_once()
     db.refresh.assert_awaited_once_with(image)
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_by_id_returns_image():
     db = MagicMock()
@@ -64,8 +64,8 @@ async def test_get_by_id_returns_image():
     assert returned_image is image
 
     db.execute.assert_awaited_once()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_by_id_returns_none_when_image_does_not_exist():
     db = MagicMock()
@@ -88,7 +88,7 @@ async def test_get_by_id_returns_none_when_image_does_not_exist():
     assert returned_image is None
 
     db.execute.assert_awaited_once()
-    
+
 
 @pytest.mark.asyncio
 async def test_get_by_id_and_product_returns_image():
@@ -122,8 +122,8 @@ async def test_get_by_id_and_product_returns_image():
     assert returned_image is image
 
     db.execute.assert_awaited_once()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_by_id_and_product_returns_none_when_not_found():
     db = MagicMock()
@@ -148,7 +148,7 @@ async def test_get_by_id_and_product_returns_none_when_not_found():
     assert returned_image is None
 
     db.execute.assert_awaited_once()
-    
+
 
 @pytest.mark.asyncio
 async def test_get_by_product_id_returns_images():
@@ -192,8 +192,8 @@ async def test_get_by_product_id_returns_images():
     assert returned_images == images
 
     db.execute.assert_awaited_once()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_by_product_id_returns_empty_list():
     db = MagicMock()
@@ -217,8 +217,8 @@ async def test_get_by_product_id_returns_empty_list():
     assert returned_images == []
 
     db.execute.assert_awaited_once()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_primary_by_product_id_returns_image():
     db = MagicMock()
@@ -249,8 +249,8 @@ async def test_get_primary_by_product_id_returns_image():
     assert returned_image is image
 
     db.execute.assert_awaited_once()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_primary_by_product_id_returns_none():
     db = MagicMock()
@@ -271,7 +271,7 @@ async def test_get_primary_by_product_id_returns_none():
     assert returned_image is None
 
     db.execute.assert_awaited_once()
-    
+
 
 @pytest.mark.asyncio
 async def test_unset_primary_executes_update():
@@ -289,7 +289,7 @@ async def test_unset_primary_executes_update():
     assert result is None
 
     db.execute.assert_awaited_once()
-    
+
 
 @pytest.mark.asyncio
 async def test_set_primary_unsets_previous_primary_and_sets_image():
@@ -324,8 +324,8 @@ async def test_set_primary_unsets_previous_primary_and_sets_image():
     db.flush.assert_awaited_once()
 
     db.refresh.assert_awaited_once_with(image)
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_delete_removes_image():
     db = MagicMock()
@@ -351,4 +351,3 @@ async def test_delete_removes_image():
     db.delete.assert_awaited_once_with(image)
 
     db.flush.assert_awaited_once()
-    

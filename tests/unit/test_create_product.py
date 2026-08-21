@@ -1,21 +1,25 @@
 from decimal import Decimal
+from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from io import BytesIO
 from fastapi import UploadFile
 from sqlalchemy.exc import IntegrityError
 
+from app.core.constants import ProductImageConstants, ProductStatusEnum
+from app.exceptions.custom import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.models.category_model import Category
 from app.models.product_model import Product
 from app.schemas.product_schema import ProductCreate
 from app.services.product_service import ProductService
-from app.exceptions.custom import ConflictException, NotFoundException, BadRequestException
-from app.core.constants import ProductStatusEnum, ProductImageConstants
 
+# Create product successfully without images
 
-#Create product successfully without images
 
 @pytest.mark.asyncio
 async def test_create_product_successfully():
@@ -74,9 +78,10 @@ async def test_create_product_successfully():
     )
 
     assert result is created_product
-    
-    
-#Duplicate SKU
+
+
+# Duplicate SKU
+
 
 @pytest.mark.asyncio
 async def test_create_product_raises_conflict_for_duplicate_sku():
@@ -115,9 +120,7 @@ async def test_create_product_raises_conflict_for_duplicate_sku():
             images=[],
         )
 
-    assert str(exc_info.value) == (
-        "Product with this SKU already exists"
-    )
+    assert str(exc_info.value) == ("Product with this SKU already exists")
 
     service.product_repo.get_by_sku.assert_awaited_once_with(
         sku="IPHONE-15",
@@ -126,9 +129,10 @@ async def test_create_product_raises_conflict_for_duplicate_sku():
     service.category_repo.get_by_name.assert_not_awaited()
 
     service.product_repo.create.assert_not_awaited()
-    
 
-#Category doesn't exist
+
+# Category doesn't exist
+
 
 @pytest.mark.asyncio
 async def test_create_product_raises_not_found_when_category_does_not_exist():
@@ -170,10 +174,10 @@ async def test_create_product_raises_not_found_when_category_does_not_exist():
     )
 
     service.product_repo.create.assert_not_awaited()
-    
-    
-    
-#IntegrityError during creation
+
+
+# IntegrityError during creation
+
 
 @pytest.mark.asyncio
 async def test_create_product_converts_integrity_error_to_conflict():
@@ -222,14 +226,12 @@ async def test_create_product_converts_integrity_error_to_conflict():
             images=[],
         )
 
-    assert str(exc_info.value) == (
-        "Product with this SKU already exists"
-    )
+    assert str(exc_info.value) == ("Product with this SKU already exists")
 
     db.rollback.assert_awaited_once()
-    
-    
-#Product creation with images    
+
+
+# Product creation with images
 
 image1 = UploadFile(
     filename="iphone-front.jpg",
@@ -244,6 +246,7 @@ image2 = UploadFile(
 )
 
 images = [image1, image2]
+
 
 @pytest.mark.asyncio
 async def test_create_product_uploads_product_images():
@@ -320,9 +323,10 @@ async def test_create_product_uploads_product_images():
     assert result is created_product
 
     assert service.product_image_service.upload_image.await_count == 2
-    
-    
-#Product not found after creation
+
+
+# Product not found after creation
+
 
 @pytest.mark.asyncio
 async def test_create_product_raises_runtime_error_when_created_product_cannot_be_retrieved():
@@ -378,29 +382,30 @@ async def test_create_product_raises_runtime_error_when_created_product_cannot_b
             images=[],
         )
 
-    assert str(exc_info.value) == (
-        "Product not found after creation"
-    )
-    
+    assert str(exc_info.value) == ("Product not found after creation")
+
+
 # Accepts valid images
+
 
 @pytest.mark.asyncio
 async def test_validate_product_images_accepts_valid_image():
     db = MagicMock()
     service = ProductService(db)
-    
+
     image = UploadFile(
-        filename='product.jpg',
+        filename="product.jpg",
         file=BytesIO(b"valid image"),
         headers={"content-type": "image/jpeg"},
     )
-    
+
     result = await service._validate_product_images(images=[image])
-    
+
     assert result is None
 
 
 # Rejects too many images
+
 
 @pytest.mark.asyncio
 async def test_validate_product_images_rejects_too_many_images():
@@ -428,6 +433,7 @@ async def test_validate_product_images_rejects_too_many_images():
 
 # Rejects missing filename
 
+
 @pytest.mark.asyncio
 async def test_validate_product_images_rejects_missing_filename():
     db = MagicMock()
@@ -449,13 +455,14 @@ async def test_validate_product_images_rejects_missing_filename():
 
 # Rejects missing content type
 
+
 @pytest.mark.asyncio
 async def test_validate_product_images_rejects_missing_content_type():
     db = MagicMock()
     service = ProductService(db)
 
     image = UploadFile(
-        filename=f"product.jpg",
+        filename="product.jpg",
         file=BytesIO(b"valid image"),
     )
 
@@ -471,13 +478,14 @@ async def test_validate_product_images_rejects_missing_content_type():
 
 # Rejects unsupported content type
 
+
 @pytest.mark.asyncio
 async def test_validate_product_images_rejects_unsupported_content_type():
     db = MagicMock()
     service = ProductService(db)
 
     image = UploadFile(
-        filename=f"product.jpg",
+        filename="product.jpg",
         file=BytesIO(b"valid image"),
         headers={"content-type": "application/pdf"},
     )
@@ -488,20 +496,19 @@ async def test_validate_product_images_rejects_unsupported_content_type():
         )
 
     assert str(exc_info.value) == (
-        "Unsupported image type 'application/pdf'. "
-        "Allowed types: JPEG, PNG, and WebP"
+        "Unsupported image type 'application/pdf'. Allowed types: JPEG, PNG, and WebP"
     )
 
-# Rejects file larger than 5 MB 
+
+# Rejects file larger than 5 MB
+
 
 @pytest.mark.asyncio
 async def test_validate_product_images_rejects_file_larger_than_maximum():
     db = MagicMock()
     service = ProductService(db)
 
-    content = b"x" * (
-        ProductImageConstants.MAX_FILE_SIZE + 1
-    )
+    content = b"x" * (ProductImageConstants.MAX_FILE_SIZE + 1)
 
     image = UploadFile(
         filename="large-product.jpg",
@@ -517,5 +524,3 @@ async def test_validate_product_images_rejects_file_larger_than_maximum():
     assert str(exc_info.value) == (
         "Image 'large-product.jpg' exceeds the maximum size of 5 MB"
     )
-
- 

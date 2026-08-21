@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
 
     SESSION_EXPIRE_DAYS: int = 7
+    REMEMBER_ME_EXPIRE_DAYS: int = 30
 
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str

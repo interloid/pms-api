@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user
 from app.core.constants import (
     PaginationEnum,
     ProductStatusEnum,
@@ -27,7 +26,9 @@ from app.schemas.response import (
 from app.services.product_service import ProductService
 
 router = APIRouter(
-    prefix="/products", tags=["Products"], dependencies=[Depends(get_current_user)]
+    prefix="/products",
+    tags=["Products"],
+    # dependencies=[Depends(get_current_user)]
 )
 
 
@@ -42,6 +43,8 @@ def to_product_response(product: Product) -> ProductResponse:
         status=ProductStatusEnum(product.status),
         description=product.description,
         images=[ProductImageResponse.model_validate(image) for image in product.images],
+        created_at=product.created_at,
+        updated_at=product.updated_at,
     )
 
 
@@ -207,9 +210,28 @@ async def get_product(
 )
 async def update_product(
     product_id: UUID,
-    payload: ProductUpdate,
+    name: Annotated[str | None, Form()] = None,
+    sku: Annotated[str | None, Form()] = None,
+    category_name: Annotated[str | None, Form()] = None,
+    price: Annotated[Decimal | None, Form()] = None,
+    stock: Annotated[int | None, Form()] = None,
+    status: Annotated[ProductStatusEnum | None, Form()] = None,
+    description: Annotated[str | None, Form()] = None,
+    primary_image_id: Annotated[UUID | None, Form()] = None,
+    images: list[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ProductResponse]:
+
+    payload = ProductUpdate(
+        name=name,
+        sku=sku,
+        category_name=category_name,
+        price=price,
+        stock=stock,
+        status=status,
+        description=description,
+    )
+
     product_service = ProductService(
         db=db,
     )
@@ -217,10 +239,13 @@ async def update_product(
     product = await product_service.update_product(
         product_id=product_id,
         payload=payload,
+        images=images,
+        primary_image_id=primary_image_id,
     )
 
     return ApiResponse(
-        message="Product retrieved successfully", data=to_product_response(product)
+        message="Product updated successfully",
+        data=to_product_response(product),
     )
 
 

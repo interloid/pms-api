@@ -20,8 +20,8 @@ def test_build_url_returns_s3_url():
         "https://my-product-bucket.s3.ap-south-1.amazonaws.com/"
         "products/123/images/image.jpg"
     )
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_upload_file_uploads_file_to_s3():
     service = S3Service()
@@ -53,7 +53,6 @@ async def test_upload_file_uploads_file_to_s3():
         "app.core.s3.aioboto3.Session",
         return_value=session,
     ):
-
         result = await service.upload_file(
             file=file,
             object_key=object_key,
@@ -75,7 +74,8 @@ async def test_upload_file_uploads_file_to_s3():
             "ContentType": "image/jpeg",
         },
     )
-    
+
+
 @pytest.mark.asyncio
 async def test_delete_file_deletes_object_from_s3():
     service = S3Service()
@@ -105,7 +105,6 @@ async def test_delete_file_deletes_object_from_s3():
         "app.core.s3.aioboto3.Session",
         return_value=session,
     ):
-
         result = await service.delete_file(
             object_key=object_key,
         )
@@ -121,7 +120,7 @@ async def test_delete_file_deletes_object_from_s3():
         Bucket="my-product-bucket",
         Key=object_key,
     )
-    
+
 
 @pytest.mark.asyncio
 async def test_upload_file_propagates_s3_error():
@@ -160,5 +159,3 @@ async def test_upload_file_propagates_s3_error():
                 object_key="products/image.jpg",
                 content_type="image/jpeg",
             )
-            
-        

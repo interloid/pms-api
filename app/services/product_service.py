@@ -7,11 +7,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.logging import get_logger
 from app.core.constants import (
     ProductImageConstants,
     ProductStatusEnum,
 )
+from app.core.logging import get_logger
 from app.core.s3 import S3Service
 from app.exceptions.custom import (
     BadRequestException,
@@ -27,6 +27,8 @@ from app.services.base_service import BaseService
 from app.services.product_image_service import ProductImageService
 
 logger = get_logger(__name__)
+
+
 class ProductService(BaseService[Product]):
     SORT_FIELDS = {
         "name": Product.name,
@@ -84,9 +86,7 @@ class ProductService(BaseService[Product]):
                 )
             if image.size is None:
                 raise BadRequestException(
-                    message=(
-                        f"Could not determine size for '{image.filename}'"
-                    ),
+                    message=(f"Could not determine size for '{image.filename}'"),
                 )
 
             if image.size > ProductImageConstants.MAX_FILE_SIZE:
@@ -95,7 +95,6 @@ class ProductService(BaseService[Product]):
                         f"Image '{image.filename}' exceeds the maximum size of 5 MB"
                     ),
                 )
-
 
     async def create_product(
         self, payload: ProductCreate, images: list[UploadFile]
@@ -126,7 +125,7 @@ class ProductService(BaseService[Product]):
             status=payload.status,
             description=payload.description,
         )
-        
+
         uploaded_object_keys: list[str] = []
 
         try:
@@ -142,10 +141,8 @@ class ProductService(BaseService[Product]):
                     content_type=image.content_type or "application/octet-stream",
                     is_primary=(index == 0),
                 )
-                
-                uploaded_object_keys.append(
-                    product_image.object_key
-                )
+
+                uploaded_object_keys.append(product_image.object_key)
 
             product = await self.product_repo.get_by_id(
                 product_id=product.id,
@@ -158,7 +155,7 @@ class ProductService(BaseService[Product]):
 
         except Exception:
             await self.db.rollback()
-            
+
             for object_key in uploaded_object_keys:
                 try:
                     await self.s3_service.delete_file(
@@ -171,7 +168,6 @@ class ProductService(BaseService[Product]):
                         object_key,
                     )
             raise
-
 
     async def get_product(self, product_id: UUID) -> Product:
 
@@ -284,7 +280,12 @@ class ProductService(BaseService[Product]):
         self,
         product_id: UUID,
         payload: ProductUpdate,
+        images: list[UploadFile],
+        primary_image_id: UUID | None = None,
     ) -> Product:
+        
+        if images:
+            await self._validate_product_images(images)
 
         product = await self.product_repo.get_by_id(
             product_id=product_id,
@@ -296,9 +297,6 @@ class ProductService(BaseService[Product]):
             )
 
         updates = payload.model_dump(exclude_unset=True)
-
-        if not updates:
-            return product
 
         if "sku" in updates and updates["sku"] != product.sku:
             existing_product = await self.product_repo.get_by_sku(
@@ -323,41 +321,51 @@ class ProductService(BaseService[Product]):
                 )
 
             product.category_id = category.id
-
             del updates["category_name"]
 
         for field, value in updates.items():
-            setattr(
-                product,
-                field,
-                value,
-            )
+            setattr(product, field, value)
 
         try:
-            return await self.product_repo.update(product=product)
+            product = await self.product_repo.update(
+                product=product,
+            )
+
+            if images:
+                await self.product_image_service.add_images(
+                    product_id=product.id,
+                    images=images,
+                )
+                
+            if primary_image_id is not None:
+                await self.product_image_service.set_primary_image(
+                    image_id=primary_image_id,
+                    product_id=product.id,
+                )
+
+            return product
 
         except IntegrityError as exc:
+            await self.db.rollback()
+            
             raise ConflictException(
                 message=(
                     "Product could not be updated because of a conflicting resource"
                 ),
             ) from exc
 
+
     async def delete_product(self, product_id: UUID) -> None:
 
-        product = await self.product_repo.get_by_id(product_id=product_id)
-
-        if product is None:
-            raise NotFoundException(message="Product not found")
-        
-        images = await self.product_image_repo.get_by_product_id(
+        product = await self.product_repo.get_by_id(
             product_id=product_id,
         )
 
-        for image in images:
-            await self.s3_service.delete_file(
-                object_key=image.object_key,
-            )
+        if product is None:
+            raise NotFoundException(message="Product not found")
+
+        await self.product_image_service.delete_by_product_id(
+            product_id=product_id,
+        )
 
         await self.product_repo.delete(product=product)
-

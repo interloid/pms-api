@@ -1,13 +1,15 @@
 from typing import BinaryIO
 from uuid import UUID, uuid4
 
+from fastapi import UploadFile
+from app.core.logging import get_logger
 from app.core.s3 import S3Service
 from app.exceptions.custom import NotFoundException
 from app.models.product_image_model import ProductImage
 from app.repositories.product_image_repo import ProductImageRepository
-from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
 
 class ProductImageService:
     def __init__(
@@ -54,6 +56,46 @@ class ProductImageService:
             image = await self.product_image_repo.set_primary(image)
 
         return image
+    
+    async def add_images(
+        self,
+        *,
+        product_id: UUID,
+        images: list[UploadFile],
+    ) -> list[ProductImage]:
+
+        uploaded_images: list[ProductImage] = []
+        uploaded_object_keys: list[str] = []
+
+        try:
+            for image in images:
+                product_image = await self.upload_image(
+                    product_id=product_id,
+                    file=image.file,
+                    filename=image.filename or "image",
+                    content_type=image.content_type
+                    or "application/octet-stream",
+                )
+
+                uploaded_images.append(product_image)
+                uploaded_object_keys.append(product_image.object_key)
+
+            return uploaded_images
+
+        except Exception:
+            for object_key in uploaded_object_keys:
+                try:
+                    await self.s3_service.delete_file(
+                        object_key=object_key,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to clean up S3 object after "
+                        "image upload failure | object_key=%s",
+                        object_key,
+                    )
+            raise
+        
 
     async def get_image(
         self,
@@ -103,19 +145,16 @@ class ProductImageService:
             image_id=image_id,
             product_id=product_id,
         )
-        
+
         object_key = image.object_key
-        
+
         await self.product_image_repo.delete(image)
 
         await self.db.commit()
-        
-        try:
 
-            await self.s3_service.delete_file(
-                object_key=object_key
-            )
-            
+        try:
+            await self.s3_service.delete_file(object_key=object_key)
+
         except Exception:
             logger.exception(
                 "Failed to delete S3 object after deleting "
@@ -123,3 +162,13 @@ class ProductImageService:
                 object_key,
             )
 
+    async def delete_by_product_id(self, product_id: UUID) -> None:
+
+        images = await self.product_image_repo.get_by_product_id(
+            product_id=product_id,
+        )
+
+        for image in images:
+            await self.s3_service.delete_file(
+                object_key=image.object_key,
+            )

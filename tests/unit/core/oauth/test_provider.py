@@ -18,7 +18,6 @@ def test_oauth_provider_requires_all_abstract_methods():
 
 def test_oauth_provider_can_be_implemented():
     class TestOAuthProvider(OAuthProvider):
-
         def get_authorization_url(self, state: str) -> str:
             return f"https://example.com/oauth?state={state}"
 
@@ -37,8 +36,9 @@ def test_oauth_provider_can_be_implemented():
 
     provider = TestOAuthProvider()
 
-    assert provider.get_authorization_url(
-        state="test-state",
-    ) == "https://example.com/oauth?state=test-state"
-    
-    
+    assert (
+        provider.get_authorization_url(
+            state="test-state",
+        )
+        == "https://example.com/oauth?state=test-state"
+    )

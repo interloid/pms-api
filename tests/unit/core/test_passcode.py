@@ -7,8 +7,8 @@ from app.core.passcode import (
     delete_passcode_attempts,
     generate_passcode,
     get_passcode,
-    get_passcode_attempts,
     get_passcode_attempt_key,
+    get_passcode_attempts,
     get_passcode_key,
     increment_passcode_attempts,
     reset_passcode_attempts,
@@ -231,4 +231,3 @@ async def test_reset_passcode_attempts():
     redis.delete.assert_awaited_once_with(
         "auth:passcode:attempts:user@example.com",
     )
-    

@@ -26,9 +26,9 @@ from app.core.security import (
 from app.core.settings import settings
 from app.exceptions.custom import (
     AppException,
+    ConflictException,
     NotFoundException,
     UnauthorizedException,
-    ConflictException,
 )
 from app.models.session_model import Session
 from app.models.user_identity_model import UserIdentity
@@ -82,9 +82,12 @@ class AuthService:
                 logger.warning("Invalid email or password | email=%s", login_data.email)
                 raise UnauthorizedException(message="Invalid email or password")
 
+            now = utc_now()
+
             session = Session(
                 user_id=user.id,
-                expires_at=utc_now() + timedelta(days=settings.SESSION_EXPIRE_DAYS),
+                expires_at=now + timedelta(days=settings.SESSION_EXPIRE_DAYS),
+                remember_me=login_data.remember_me,
             )
 
             await self.session_repo.create(session)
@@ -150,46 +153,66 @@ class AuthService:
 
     async def get_current_session(self, session_id: UUID):
 
-            session = await self.session_repo.get_active_by_id(
-                session_id, now=utc_now()
+        now = utc_now()
+
+        session = await self.session_repo.get_active_by_id(
+            session_id,
+            now=now,
+        )
+
+        if session is None:
+            logger.warning(
+                "Invalid or expired session | session_id=%s",
+                session_id,
+            )
+            raise UnauthorizedException(message="Invalid or expired session")
+
+        user = await self.user_repo.get_by_id(session.user_id)
+
+        if user is None:
+            logger.warning(
+                "User not found for session | session_id=%s",
+                session_id,
+            )
+            raise UnauthorizedException(message="Invalid session")
+
+        if not user.is_active:
+            logger.warning(
+                "Inactive user | user_id=%s",
+                user.id,
+            )
+            raise UnauthorizedException(message="Invalid session")
+
+        if session.remember_me:
+            absolute_expiration = session.created_at + timedelta(
+                days=settings.REMEMBER_ME_EXPIRE_DAYS
             )
 
-            if session is None:
-                logger.warning(
-                    "Invalid or expired session | session_id=%s",
-                    session_id,
+            renew_threshold = timedelta(days=1)
+
+            if session.expires_at - now <= renew_threshold:
+                new_expiration = min(
+                    now + timedelta(days=settings.SESSION_EXPIRE_DAYS),
+                    absolute_expiration,
                 )
-                raise UnauthorizedException(message="Invalid or expired session")
 
-            user = await self.user_repo.get_by_id(session.user_id)
+                if new_expiration > session.expires_at:
+                    session.expires_at = new_expiration
+                    await self.db.commit()
 
-            if user is None:
-                logger.warning(
-                    "User not found for session | session_id=%s",
-                    session_id,
-                )
-                raise UnauthorizedException(message="Invalid session")
-
-            if not user.is_active:
-                logger.warning(
-                    "Inactive user | user_id=%s",
-                    user.id,
-                )
-                raise UnauthorizedException(message="Invalid session")
-
-            return ApiResponse[LoginResponse](
-                message="Session retrieved successfully",
-                data=LoginResponse(
-                    session_id=session.id,
-                    user=UserResponse(
-                        id=user.id,
-                        email=user.email,
-                        first_name=user.first_name,
-                        last_name=user.last_name,
-                        is_active=user.is_active,
-                    ),
+        return ApiResponse[LoginResponse](
+            message="Session retrieved successfully",
+            data=LoginResponse(
+                session_id=session.id,
+                user=UserResponse(
+                    id=user.id,
+                    email=user.email,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    is_active=user.is_active,
                 ),
-            )
+            ),
+        )
 
     async def request_passcode(
         self,
@@ -297,9 +320,8 @@ class AuthService:
                     last_name="",
                     is_active=True,
                 )
-                
+
                 await self.user_repo.create(user)
-               
 
             session = Session(
                 user_id=user.id,
@@ -553,7 +575,7 @@ class AuthService:
                 )
 
                 await self.user_identity_repo.create(identity)
-                
+
             if not user.is_active:
                 raise UnauthorizedException(message="User account is inactive")
 
@@ -593,7 +615,6 @@ class AuthService:
             )
 
             raise
-
 
     async def get_github_email(self, client: AsyncOAuth2Client) -> str:
         response = await client.get(

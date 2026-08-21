@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -20,22 +20,16 @@ def test_get_oauth_client_google(mock_client):
 def test_get_oauth_client_microsoft(mock_client):
     get_oauth_client("microsoft")
 
-    assert mock_client.call_args.kwargs["scope"] == (
-        "openid profile email"
-    )
+    assert mock_client.call_args.kwargs["scope"] == ("openid profile email")
 
 
 @patch("app.core.oauth.client.AsyncOAuth2Client")
 def test_get_oauth_client_github(mock_client):
     get_oauth_client("github")
 
-    assert mock_client.call_args.kwargs["scope"] == (
-        "read:user user:email"
-    )
+    assert mock_client.call_args.kwargs["scope"] == ("read:user user:email")
 
 
 def test_get_oauth_client_raises_for_unsupported_provider():
     with pytest.raises(ValueError, match="Unsupported OAuth provider: facebook"):
         get_oauth_client("facebook")
-        
-        

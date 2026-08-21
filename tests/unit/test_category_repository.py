@@ -34,8 +34,8 @@ async def test_get_by_id_returns_category():
     assert returned_category is category
 
     db.execute.assert_awaited_once()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_by_id_returns_none_when_category_does_not_exist():
     db = MagicMock()
@@ -58,8 +58,8 @@ async def test_get_by_id_returns_none_when_category_does_not_exist():
     assert returned_category is None
 
     db.execute.assert_awaited_once()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_by_name_returns_category():
     db = MagicMock()
@@ -85,8 +85,8 @@ async def test_get_by_name_returns_category():
     assert returned_category is category
 
     db.execute.assert_awaited_once()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_by_name_returns_none_when_category_does_not_exist():
     db = MagicMock()
@@ -107,8 +107,8 @@ async def test_get_by_name_returns_none_when_category_does_not_exist():
     assert returned_category is None
 
     db.execute.assert_awaited_once()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_all_returns_categories():
     db = MagicMock()
@@ -141,8 +141,8 @@ async def test_get_all_returns_categories():
     assert returned_categories == categories
 
     db.execute.assert_awaited_once()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_all_returns_empty_list_when_no_categories_exist():
     db = MagicMock()
@@ -164,5 +164,3 @@ async def test_get_all_returns_empty_list_when_no_categories_exist():
     assert returned_categories == []
 
     db.execute.assert_awaited_once()
-    
-    

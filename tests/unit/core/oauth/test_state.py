@@ -1,8 +1,8 @@
 from urllib.parse import parse_qs, urlparse
 
+from app.core.oauth.config import GOOGLE_CONFIG
 from app.core.oauth.state import generate_oauth_state
 from app.core.oauth.url import build_google_authorization_url
-from app.core.oauth.config import GOOGLE_CONFIG
 from app.core.settings import settings
 
 
@@ -39,5 +39,3 @@ def test_build_google_authorization_url():
     assert params["state"][0] == state
     assert params["access_type"][0] == "offline"
     assert params["prompt"][0] == "select_account"
-    
-    

@@ -5,12 +5,12 @@ from uuid import uuid4
 import pytest
 
 from app.core.constants import ProductStatusEnum
+from app.exceptions.custom import BadRequestException
 from app.models.product_model import Product
 from app.services.product_service import ProductService
-from app.exceptions.custom import BadRequestException
 
+# Default parameters
 
-#Default parameters
 
 @pytest.mark.asyncio
 async def test_list_products_returns_products_and_total():
@@ -40,8 +40,9 @@ async def test_list_products_returns_products_and_total():
     assert result == (products, 2)
 
     service.paginate.assert_awaited_once()
-    
-#Search
+
+
+# Search
 @pytest.mark.asyncio
 async def test_list_products_with_search():
     db = MagicMock()
@@ -73,9 +74,10 @@ async def test_list_products_with_search():
     service.apply_search.assert_called_once()
 
     service.paginate.assert_awaited_once()
- 
-    
-#Category filter
+
+
+# Category filter
+
 
 @pytest.mark.asyncio
 async def test_list_products_with_category_filter():
@@ -112,9 +114,9 @@ async def test_list_products_with_category_filter():
     assert len(filters) == 1
 
     service.paginate.assert_awaited_once()
- 
-    
-#Status filter
+
+
+# Status filter
 @pytest.mark.asyncio
 async def test_list_products_with_status_filter():
     db = MagicMock()
@@ -140,9 +142,10 @@ async def test_list_products_with_status_filter():
     filters = service.apply_filters.call_args.kwargs["filters"]
 
     assert len(filters) == 1
-    
-    
-#Minimum price
+
+
+# Minimum price
+
 
 @pytest.mark.asyncio
 async def test_list_products_with_min_price():
@@ -169,9 +172,9 @@ async def test_list_products_with_min_price():
     filters = service.apply_filters.call_args.kwargs["filters"]
 
     assert len(filters) == 1
-    
-    
-#Maximum price
+
+
+# Maximum price
 @pytest.mark.asyncio
 async def test_list_products_with_max_price():
     db = MagicMock()
@@ -197,9 +200,10 @@ async def test_list_products_with_max_price():
     filters = service.apply_filters.call_args.kwargs["filters"]
 
     assert len(filters) == 1
-    
-    
-#In-stock filter
+
+
+# In-stock filter
+
 
 @pytest.mark.asyncio
 async def test_list_products_with_in_stock_filter():
@@ -226,9 +230,10 @@ async def test_list_products_with_in_stock_filter():
     filters = service.apply_filters.call_args.kwargs["filters"]
 
     assert len(filters) == 1
-    
-    
-#Out-of-stock filter
+
+
+# Out-of-stock filter
+
 
 @pytest.mark.asyncio
 async def test_list_products_with_out_of_stock_filter():
@@ -255,9 +260,10 @@ async def test_list_products_with_out_of_stock_filter():
     filters = service.apply_filters.call_args.kwargs["filters"]
 
     assert len(filters) == 1
-    
 
-#Multiple filters
+
+# Multiple filters
+
 
 @pytest.mark.asyncio
 async def test_list_products_with_multiple_filters():
@@ -288,9 +294,10 @@ async def test_list_products_with_multiple_filters():
     filters = service.apply_filters.call_args.kwargs["filters"]
 
     assert len(filters) == 5
-    
-    
-#Sorting
+
+
+# Sorting
+
 
 @pytest.mark.asyncio
 async def test_list_products_with_sorting():
@@ -336,8 +343,10 @@ async def test_list_products_with_sorting():
         sort_column=Product.name,
         sort_order="asc",
     )
-    
-#Pagination parameters are passed correctly
+
+
+# Pagination parameters are passed correctly
+
 
 @pytest.mark.asyncio
 async def test_list_products_passes_pagination_parameters():
@@ -360,9 +369,10 @@ async def test_list_products_passes_pagination_parameters():
 
     assert paginate_kwargs["page"] == 3
     assert paginate_kwargs["page_size"] == 20
-    
-    
-#Pagination validation failure
+
+
+# Pagination validation failure
+
 
 @pytest.mark.asyncio
 async def test_list_products_rejects_invalid_pagination():
@@ -379,9 +389,10 @@ async def test_list_products_rejects_invalid_pagination():
         )
 
     service.paginate.assert_not_awaited()
-    
-    
-#Invalid sort field falls back to default
+
+
+# Invalid sort field falls back to default
+
 
 @pytest.mark.asyncio
 async def test_list_products_uses_default_sort_for_unknown_sort_field():
@@ -412,5 +423,3 @@ async def test_list_products_uses_default_sort_for_unknown_sort_field():
         sort_fields=service.SORT_FIELDS,
         default_sort=service.DEFAULT_SORT,
     )
-    
-    

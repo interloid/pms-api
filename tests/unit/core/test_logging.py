@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.middleware import logging_middleware
 from app.middleware.logging_middleware import LoggingMiddleware
@@ -26,15 +27,17 @@ async def test_logging_middleware_logs_request_and_adds_request_id():
 
     middleware = LoggingMiddleware(app=MagicMock())
 
-    with patch.object(
-        logging_middleware,
-        "generate_request_id",
-        return_value="request-123",
-    ), patch.object(
-        logging_middleware.logger,
-        "info",
-    ) as mock_logger:
-
+    with (
+        patch.object(
+            logging_middleware,
+            "generate_request_id",
+            return_value="request-123",
+        ),
+        patch.object(
+            logging_middleware.logger,
+            "info",
+        ) as mock_logger,
+    ):
         result = await middleware.dispatch(
             request,
             call_next,
@@ -152,4 +155,3 @@ async def test_logging_middleware_resets_context_when_request_fails():
     assert request_id_ctx.get("-") == "-"
     assert method_ctx.get("-") == "-"
     assert path_ctx.get("-") == "-"
-    

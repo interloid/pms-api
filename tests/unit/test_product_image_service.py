@@ -4,10 +4,10 @@ from uuid import uuid4
 
 import pytest
 
-from app.services.product_image_service import ProductImageService
-from app.models.product_image_model import ProductImage
-from app.repositories.product_image_repo import ProductImageRepository
 from app.exceptions.custom import NotFoundException
+from app.models.product_image_model import ProductImage
+from app.services.product_image_service import ProductImageService
+
 
 @pytest.mark.asyncio
 async def test_upload_image_creates_product_image():
@@ -44,7 +44,8 @@ async def test_upload_image_creates_product_image():
     s3_service.upload_file.assert_awaited_once()
 
     repo.create.assert_awaited_once()
-    
+
+
 @pytest.mark.asyncio
 async def test_upload_image_generates_object_key_with_extension():
     product_id = uuid4()
@@ -86,7 +87,8 @@ async def test_upload_image_generates_object_key_with_extension():
         object_key=object_key,
         content_type="image/jpeg",
     )
-    
+
+
 @pytest.mark.asyncio
 async def test_upload_image_generates_object_key_without_extension():
     product_id = uuid4()
@@ -120,7 +122,7 @@ async def test_upload_image_generates_object_key_without_extension():
     )
 
     assert not result.object_key.endswith(".")
-    
+
 
 @pytest.mark.asyncio
 async def test_upload_image_sets_primary_image_when_requested():
@@ -175,8 +177,8 @@ async def test_upload_image_sets_primary_image_when_requested():
     repo.set_primary.assert_awaited_once_with(
         created_image,
     )
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_image_returns_image():
     product_id = uuid4()
@@ -213,7 +215,8 @@ async def test_get_image_returns_image():
         image_id=image_id,
         product_id=product_id,
     )
-    
+
+
 @pytest.mark.asyncio
 async def test_get_image_raises_not_found_when_image_does_not_exist():
     product_id = uuid4()
@@ -243,7 +246,7 @@ async def test_get_image_raises_not_found_when_image_does_not_exist():
         image_id=image_id,
         product_id=product_id,
     )
-    
+
 
 @pytest.mark.asyncio
 async def test_get_product_images_returns_images():
@@ -287,8 +290,8 @@ async def test_get_product_images_returns_images():
     repo.get_by_product_id.assert_awaited_once_with(
         product_id=product_id,
     )
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_get_product_images_returns_empty_list_when_no_images():
     product_id = uuid4()
@@ -314,7 +317,8 @@ async def test_get_product_images_returns_empty_list_when_no_images():
     repo.get_by_product_id.assert_awaited_once_with(
         product_id=product_id,
     )
-    
+
+
 @pytest.mark.asyncio
 async def test_set_primary_image_sets_non_primary_image():
     product_id = uuid4()
@@ -357,8 +361,8 @@ async def test_set_primary_image_sets_non_primary_image():
     )
 
     repo.set_primary.assert_awaited_once_with(image)
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_set_primary_image_returns_image_when_already_primary():
     product_id = uuid4()
@@ -399,8 +403,8 @@ async def test_set_primary_image_returns_image_when_already_primary():
     )
 
     repo.set_primary.assert_not_awaited()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_set_primary_image_raises_not_found_when_image_does_not_exist():
     product_id = uuid4()
@@ -434,8 +438,8 @@ async def test_set_primary_image_raises_not_found_when_image_does_not_exist():
     )
 
     repo.set_primary.assert_not_awaited()
-    
-    
+
+
 @pytest.mark.asyncio
 async def test_delete_image_successfully():
     product_id = uuid4()
@@ -482,7 +486,8 @@ async def test_delete_image_successfully():
     )
 
     repo.delete.assert_awaited_once_with(image)
-    
+
+
 @pytest.mark.asyncio
 async def test_delete_image_raises_not_found_when_image_does_not_exist():
     product_id = uuid4()
@@ -518,5 +523,3 @@ async def test_delete_image_raises_not_found_when_image_does_not_exist():
 
     s3_service.delete_file.assert_not_awaited()
     repo.delete.assert_not_awaited()
-    
-

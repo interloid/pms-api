@@ -1,6 +1,5 @@
-import logging
-from unittest.mock import MagicMock, patch
 from decimal import Decimal
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI, Request, status
@@ -17,6 +16,7 @@ from app.exceptions.custom import (
     NotFoundException,
     UnauthorizedException,
 )
+from app.exceptions.global_exception import AUTH_ERROR_RESPONSES, CRUD_ERROR_RESPONSES
 from app.exceptions.handlers import (
     app_exception_handler,
     general_exception_handler,
@@ -24,9 +24,7 @@ from app.exceptions.handlers import (
     register_exception_handlers,
     validation_exception_handler,
 )
-from app.exceptions.global_exception import AUTH_ERROR_RESPONSES, CRUD_ERROR_RESPONSES
 from app.utils.helpers import request_id_ctx
-
 
 
 def test_app_exception_sets_all_attributes():
@@ -319,9 +317,7 @@ async def test_general_exception_handler_returns_internal_server_error():
 
         assert isinstance(response, JSONResponse)
 
-        assert response.status_code == (
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        assert response.status_code == (status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         body = response.body.decode()
 
@@ -351,13 +347,9 @@ def test_register_exception_handlers():
     assert app.exception_handlers[AppException] == app_exception_handler
     assert app.exception_handlers[HTTPException] == http_exception_handler
     assert (
-        app.exception_handlers[RequestValidationError]
-        == validation_exception_handler
+        app.exception_handlers[RequestValidationError] == validation_exception_handler
     )
-    assert (
-        app.exception_handlers[Exception]
-        == general_exception_handler
-    )
+    assert app.exception_handlers[Exception] == general_exception_handler
 
 
 def test_auth_error_responses_contains_expected_status_codes():
@@ -395,5 +387,3 @@ def test_crud_error_responses_use_error_response_model():
     for response in CRUD_ERROR_RESPONSES.values():
         assert response["model"] is not None
         assert response["description"]
-        
-        

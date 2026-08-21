@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import Field, model_validator
@@ -50,7 +51,7 @@ class ProductUpdate(BaseSchema):
     )
     status: ProductStatusEnum | None = None
     description: str | None = None
-    
+
     @model_validator(mode="after")
     def validate_update_fields(self):
         non_nullable_fields = {
@@ -63,9 +64,7 @@ class ProductUpdate(BaseSchema):
         }
         for field_name in self.model_fields_set & non_nullable_fields:
             if getattr(self, field_name) is None:
-                raise ValueError(
-                    f"{field_name} cannot be null"
-                )
+                raise ValueError(f"{field_name} cannot be null")
 
         return self
 
@@ -80,3 +79,5 @@ class ProductResponse(BaseSchema):
     status: ProductStatusEnum
     description: str | None
     images: list[ProductImageResponse]
+    created_at: datetime | None
+    updated_at: datetime | None

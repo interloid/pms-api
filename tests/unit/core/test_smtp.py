@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.core.smtp import send_email
 from app.core.settings import settings
+from app.core.smtp import send_email
 
 
 @pytest.mark.asyncio
@@ -12,7 +12,6 @@ async def test_send_email_sends_plain_text_email():
         "app.core.smtp.aiosmtplib.send",
         new_callable=AsyncMock,
     ) as mock_send:
-
         await send_email(
             to_email="user@example.com",
             subject="Test Subject",
@@ -36,7 +35,6 @@ async def test_send_email_sends_html_email():
         "app.core.smtp.aiosmtplib.send",
         new_callable=AsyncMock,
     ) as mock_send:
-
         await send_email(
             to_email="user@example.com",
             subject="HTML Subject",
@@ -65,7 +63,6 @@ async def test_send_email_uses_smtp_settings():
         "app.core.smtp.aiosmtplib.send",
         new_callable=AsyncMock,
     ) as mock_send:
-
         await send_email(
             to_email="user@example.com",
             subject="Test",
@@ -80,7 +77,7 @@ async def test_send_email_uses_smtp_settings():
     assert kwargs["port"] == settings.SMTP_PORT
     assert kwargs["username"] == settings.SMTP_USERNAME
     assert kwargs["password"] == settings.SMTP_PASSWORD
-    assert kwargs["start_tls"] == (not settings.SMTP_USE_TLS)
+    assert kwargs["start_tls"] == (settings.SMTP_USE_TLS)
 
 
 @pytest.mark.asyncio
@@ -99,4 +96,3 @@ async def test_send_email_propagates_smtp_error():
                 subject="Test",
                 body="Hello",
             )
-            

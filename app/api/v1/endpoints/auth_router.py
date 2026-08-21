@@ -47,14 +47,19 @@ async def login(
             message="Login response data is missing",
         )
 
+    if login_data.remember_me:
+        max_age = settings.REMEMBER_ME_EXPIRE_DAYS * 24 * 60 * 60
+    else:
+        max_age = settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60
+
     response.set_cookie(
         key="session",
         value=str(result.data.session_id),
         httponly=True,
         secure=True,
         samesite="none",
-        path='/',
-        max_age=settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/",
+        max_age=max_age,
     )
 
     return result
@@ -79,9 +84,8 @@ async def logout(
             service = AuthService(db)
             await service.logout(parsed_session_id)
 
-
     response.delete_cookie(
-    key="session",
+        key="session",
         path="/",
     )
 
@@ -136,7 +140,7 @@ async def request_passcode(
 @router.post("/passcode/verify")
 async def verify_passcode(
     login_data: PasscodeVerifyRequest,
-    response: Response, 
+    response: Response,
     redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
@@ -159,7 +163,7 @@ async def verify_passcode(
         httponly=True,
         secure=True,
         samesite="none",
-        path='/',
+        path="/",
         max_age=settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60,
     )
 
@@ -228,7 +232,7 @@ async def omniauth_callback(
         httponly=True,
         secure=True,
         samesite="none",
-        path='/',
+        path="/",
         max_age=settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60,
     )
 
