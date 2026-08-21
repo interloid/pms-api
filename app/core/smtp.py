@@ -31,5 +31,5 @@ async def send_email(
         port=settings.SMTP_PORT,
         username=settings.SMTP_USERNAME,
         password=settings.SMTP_PASSWORD,
-        start_tls=settings.SMTP_USE_TLS,
+        start_tls=settings.SMTP_START_TLS,
     )

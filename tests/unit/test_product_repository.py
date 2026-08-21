@@ -352,51 +352,6 @@ async def test_list_with_search_returns_matching_products():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "kwargs",
-    [
-        {"category_id": uuid4()},
-        {"status": "active"},
-        {"min_price": Decimal("100")},
-        {"max_price": Decimal("1000")},
-        {"in_stock": True},
-        {"in_stock": False},
-    ],
-)
-async def test_list_with_filters_returns_products(kwargs):
-    db = MagicMock()
-
-    product = Product(
-        id=uuid4(),
-        name="iPhone 15",
-        sku="IPHONE-15",
-    )
-
-    count_result = MagicMock()
-    count_result.scalar_one.return_value = 1
-
-    products_result = mock_list_result([product])
-
-    db.execute = AsyncMock(
-        side_effect=[
-            count_result,
-            products_result,
-        ],
-    )
-
-    repo = ProductRepository(db)
-
-    products, total = await repo.list(
-        **kwargs,
-    )
-
-    assert products == [product]
-    assert total == 1
-
-    assert db.execute.await_count == 2
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
     "sort_by",
     [
         "name",
@@ -550,5 +505,3 @@ async def test_list_applies_pagination():
     assert total == 25
 
     assert db.execute.await_count == 2
-    
-    

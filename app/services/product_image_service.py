@@ -56,7 +56,7 @@ class ProductImageService:
             image = await self.product_image_repo.set_primary(image)
 
         return image
-    
+
     async def add_images(
         self,
         *,
@@ -73,8 +73,7 @@ class ProductImageService:
                     product_id=product_id,
                     file=image.file,
                     filename=image.filename or "image",
-                    content_type=image.content_type
-                    or "application/octet-stream",
+                    content_type=image.content_type or "application/octet-stream",
                 )
 
                 uploaded_images.append(product_image)
@@ -95,7 +94,6 @@ class ProductImageService:
                         object_key,
                     )
             raise
-        
 
     async def get_image(
         self,

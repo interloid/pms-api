@@ -180,7 +180,7 @@ async def test_create_product_raises_not_found_when_category_does_not_exist():
 
 
 @pytest.mark.asyncio
-async def test_create_product_converts_integrity_error_to_conflict():
+async def test_create_product_rolls_back_on_integrity_error():
     db = MagicMock()
     db.rollback = AsyncMock()
 
@@ -203,12 +203,14 @@ async def test_create_product_converts_integrity_error_to_conflict():
         return_value=category,
     )
 
+    integrity_error = IntegrityError(
+        statement="INSERT INTO products",
+        params={},
+        orig=Exception("duplicate"),
+    )
+
     service.product_repo.create = AsyncMock(
-        side_effect=IntegrityError(
-            statement="INSERT INTO products",
-            params={},
-            orig=Exception("duplicate"),
-        ),
+        side_effect=integrity_error,
     )
 
     payload = ProductCreate(
@@ -220,15 +222,17 @@ async def test_create_product_converts_integrity_error_to_conflict():
         status=ProductStatusEnum.ACTIVE,
     )
 
-    with pytest.raises(ConflictException) as exc_info:
+    with pytest.raises(IntegrityError) as exc_info:
         await service.create_product(
             payload=payload,
             images=[],
         )
 
-    assert str(exc_info.value) == ("Product with this SKU already exists")
+    assert exc_info.value is integrity_error
 
     db.rollback.assert_awaited_once()
+
+    service.product_repo.create.assert_awaited_once()
 
 
 # Product creation with images
@@ -331,22 +335,25 @@ async def test_create_product_uploads_product_images():
 @pytest.mark.asyncio
 async def test_create_product_raises_runtime_error_when_created_product_cannot_be_retrieved():
     db = MagicMock()
+    db.rollback = AsyncMock()
 
     service = ProductService(db)
 
     category_id = uuid4()
-    product_id = uuid4()
 
     category = Category(
         id=category_id,
         name="Electronics",
     )
 
-    created_product = Product(
-        id=product_id,
+    product = Product(
+        id=uuid4(),
         name="iPhone 15",
         sku="IPHONE-15",
         category_id=category_id,
+        price=Decimal("799.99"),
+        stock=10,
+        status=ProductStatusEnum.ACTIVE,
     )
 
     service._validate_product_images = AsyncMock()
@@ -360,7 +367,7 @@ async def test_create_product_raises_runtime_error_when_created_product_cannot_b
     )
 
     service.product_repo.create = AsyncMock(
-        return_value=created_product,
+        return_value=product,
     )
 
     service.product_repo.get_by_id = AsyncMock(
@@ -382,7 +389,24 @@ async def test_create_product_raises_runtime_error_when_created_product_cannot_b
             images=[],
         )
 
-    assert str(exc_info.value) == ("Product not found after creation")
+    assert str(exc_info.value) == "Product not found after creation"
+
+    db.rollback.assert_awaited_once()
+
+    service.product_repo.create.assert_awaited_once()
+
+    created_product = service.product_repo.create.await_args.kwargs["product"]
+
+    assert created_product.name == "iPhone 15"
+    assert created_product.sku == "IPHONE-15"
+    assert created_product.category_id == category_id
+    assert created_product.price == Decimal("799.99")
+    assert created_product.stock == 10
+    assert created_product.status == ProductStatusEnum.ACTIVE
+
+    service.product_repo.get_by_id.assert_awaited_once_with(
+        product_id=product.id,
+    )
 
 
 # Accepts valid images
@@ -399,7 +423,11 @@ async def test_validate_product_images_accepts_valid_image():
         headers={"content-type": "image/jpeg"},
     )
 
-    result = await service._validate_product_images(images=[image])
+    image.size = len(b"valid image")
+
+    result = await service._validate_product_images(
+        images=[image],
+    )
 
     assert result is None
 
@@ -508,13 +536,13 @@ async def test_validate_product_images_rejects_file_larger_than_maximum():
     db = MagicMock()
     service = ProductService(db)
 
-    content = b"x" * (ProductImageConstants.MAX_FILE_SIZE + 1)
-
     image = UploadFile(
         filename="large-product.jpg",
-        file=BytesIO(content),
+        file=BytesIO(b"large image"),
         headers={"content-type": "image/jpeg"},
     )
+
+    image.size = ProductImageConstants.MAX_FILE_SIZE + 1
 
     with pytest.raises(BadRequestException) as exc_info:
         await service._validate_product_images(

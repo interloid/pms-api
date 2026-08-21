@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str
     SMTP_FROM_EMAIL: str
     SMTP_FROM_NAME: str = "Product Management System"
-    SMTP_USE_TLS: bool = False
+    SMTP_START_TLS: bool = True
 
     PASSCODE_EXPIRE_SECONDS: int = 300
     PASSCODE_LENGTH: int = 6

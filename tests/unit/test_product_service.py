@@ -244,7 +244,7 @@ async def test_update_product_updates_product():
     result = await service.update_product(
         product_id=product_id,
         payload=payload,
-         images=[],
+        images=[],
     )
 
     assert result is updated_product
@@ -302,7 +302,7 @@ async def test_update_product_raises_conflict_when_sku_already_exists():
         )
 
     assert str(exc_info.value) == ("Product with this SKU already exists")
-    
+
     service.product_repo.get_by_id.assert_awaited_once_with(
         product_id=product_id,
     )

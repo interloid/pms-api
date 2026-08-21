@@ -87,14 +87,16 @@ async def test_login_returns_successful_login_response():
 
     service.session_repo.create = AsyncMock()
 
-    with patch(
-        "app.services.auth_service.verify_password",
-        return_value=True,
-    ), patch(
-        "app.services.auth_service.Session",
-        return_value=session,
+    with (
+        patch(
+            "app.services.auth_service.verify_password",
+            return_value=True,
+        ),
+        patch(
+            "app.services.auth_service.Session",
+            return_value=session,
+        ),
     ):
-
         result = await service.login(login_data)
 
     assert result.message == "Login successful"
@@ -144,14 +146,16 @@ async def test_login_creates_session_with_remember_me_false():
 
     service.session_repo.create = AsyncMock()
 
-    with patch(
-        "app.services.auth_service.verify_password",
-        return_value=True,
-    ), patch(
-        "app.services.auth_service.Session",
-        return_value=session,
+    with (
+        patch(
+            "app.services.auth_service.verify_password",
+            return_value=True,
+        ),
+        patch(
+            "app.services.auth_service.Session",
+            return_value=session,
+        ),
     ):
-
         await service.login(login_data)
 
     service.session_repo.create.assert_awaited_once_with(
@@ -246,7 +250,6 @@ async def test_login_raises_unauthorized_when_password_is_invalid():
         "app.services.auth_service.verify_password",
         return_value=False,
     ) as mock_verify:
-
         with pytest.raises(
             UnauthorizedException,
             match="Invalid email or password",
@@ -288,7 +291,6 @@ async def test_login_raises_unauthorized_when_user_is_inactive():
         "app.services.auth_service.verify_password",
         return_value=True,
     ) as mock_verify:
-
         with pytest.raises(
             UnauthorizedException,
             match="Invalid email or password",
@@ -302,7 +304,7 @@ async def test_login_raises_unauthorized_when_user_is_inactive():
 
     db.rollback.assert_awaited_once()
     db.commit.assert_not_awaited()
-    
+
     service.session_repo.create = AsyncMock()
     service.session_repo.create.assert_not_awaited()
 
@@ -326,7 +328,6 @@ async def test_login_rolls_back_when_get_user_raises_exception():
     with patch(
         "app.services.auth_service.logger.exception",
     ) as mock_logger:
-
         with pytest.raises(
             RuntimeError,
             match="Database error",
@@ -363,13 +364,15 @@ async def test_login_rolls_back_when_session_creation_fails():
         side_effect=RuntimeError("Session creation failed"),
     )
 
-    with patch(
-        "app.services.auth_service.verify_password",
-        return_value=True,
-    ), patch(
-        "app.services.auth_service.logger.exception",
-    ) as mock_logger:
-
+    with (
+        patch(
+            "app.services.auth_service.verify_password",
+            return_value=True,
+        ),
+        patch(
+            "app.services.auth_service.logger.exception",
+        ) as mock_logger,
+    ):
         with pytest.raises(
             RuntimeError,
             match="Session creation failed",
@@ -411,16 +414,19 @@ async def test_login_rolls_back_when_commit_fails():
 
     service.session_repo.create = AsyncMock()
 
-    with patch(
-        "app.services.auth_service.verify_password",
-        return_value=True,
-    ), patch(
-        "app.services.auth_service.Session",
-        return_value=session,
-    ), patch(
-        "app.services.auth_service.logger.exception",
+    with (
+        patch(
+            "app.services.auth_service.verify_password",
+            return_value=True,
+        ),
+        patch(
+            "app.services.auth_service.Session",
+            return_value=session,
+        ),
+        patch(
+            "app.services.auth_service.logger.exception",
+        ),
     ):
-
         with pytest.raises(
             RuntimeError,
             match="Commit failed",
@@ -459,7 +465,6 @@ async def test_login_rolls_back_when_session_repo_raises_app_exception():
         "app.services.auth_service.verify_password",
         return_value=True,
     ):
-
         with pytest.raises(
             ConflictException,
             match="Session conflict",
@@ -556,7 +561,6 @@ async def test_logout_rolls_back_when_get_session_fails():
     with patch(
         "app.services.auth_service.logger.exception",
     ) as mock_logger:
-
         with pytest.raises(
             RuntimeError,
             match="Database error",
@@ -597,7 +601,6 @@ async def test_logout_rolls_back_when_delete_fails():
     with patch(
         "app.services.auth_service.logger.exception",
     ) as mock_logger:
-
         with pytest.raises(
             RuntimeError,
             match="Delete failed",
@@ -640,7 +643,6 @@ async def test_logout_rolls_back_when_commit_fails():
     with patch(
         "app.services.auth_service.logger.exception",
     ):
-
         with pytest.raises(
             RuntimeError,
             match="Commit failed",
@@ -686,6 +688,3 @@ async def test_logout_rolls_back_when_delete_raises_app_exception():
 
     db.rollback.assert_awaited_once()
     db.commit.assert_not_awaited()
-    
-    
-    

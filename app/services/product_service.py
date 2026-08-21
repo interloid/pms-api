@@ -283,7 +283,7 @@ class ProductService(BaseService[Product]):
         images: list[UploadFile],
         primary_image_id: UUID | None = None,
     ) -> Product:
-        
+
         if images:
             await self._validate_product_images(images)
 
@@ -336,7 +336,7 @@ class ProductService(BaseService[Product]):
                     product_id=product.id,
                     images=images,
                 )
-                
+
             if primary_image_id is not None:
                 await self.product_image_service.set_primary_image(
                     image_id=primary_image_id,
@@ -347,13 +347,12 @@ class ProductService(BaseService[Product]):
 
         except IntegrityError as exc:
             await self.db.rollback()
-            
+
             raise ConflictException(
                 message=(
                     "Product could not be updated because of a conflicting resource"
                 ),
             ) from exc
-
 
     async def delete_product(self, product_id: UUID) -> None:
 
