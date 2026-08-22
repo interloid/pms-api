@@ -2,6 +2,7 @@ from typing import BinaryIO
 from uuid import UUID, uuid4
 
 from fastapi import UploadFile
+
 from app.core.logging import get_logger
 from app.core.s3 import S3Service
 from app.exceptions.custom import NotFoundException

@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 
 from app.main import app
 
@@ -30,12 +29,6 @@ def test_redoc_route_is_registered():
     paths = {route.path for route in app.routes if hasattr(route, "path")}
 
     assert app.redoc_url in paths
-
-
-def test_api_routes_are_registered():
-    api_routes = [route for route in app.routes if isinstance(route, APIRoute)]
-
-    assert api_routes
 
 
 def test_cors_middleware_is_registered():

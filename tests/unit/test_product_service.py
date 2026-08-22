@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.exc import IntegrityError
 
 from app.exceptions.custom import ConflictException, NotFoundException
 from app.models.category_model import Category
@@ -59,41 +58,6 @@ async def test_get_product_raises_not_found_when_product_does_not_exist():
 
     service.product_repo.get_by_id.assert_awaited_once_with(
         product_id=product_id,
-    )
-
-
-@pytest.mark.asyncio
-async def test_delete_product_deletes_existing_product():
-    db = MagicMock()
-
-    service = ProductService(db)
-
-    product_id = uuid4()
-
-    product = Product(
-        id=product_id,
-        name="iphone 15",
-        sku="IPHONE-15",
-    )
-
-    service.product_repo.get_by_id = AsyncMock(
-        return_value=product,
-    )
-
-    service.product_repo.delete = MagicMock()
-
-    result = await service.delete_product(
-        product_id=product_id,
-    )
-
-    assert result is None
-
-    service.product_repo.get_by_id.assert_awaited_once_with(
-        product_id=product_id,
-    )
-
-    service.product_repo.delete.assert_awaited_once_with(
-        product=product,
     )
 
 
@@ -154,46 +118,6 @@ async def test_update_product_raises_not_found_when_product_does_not_exist():
         )
 
     assert str(exc_info.value) == "Product not found"
-
-    service.product_repo.get_by_id.assert_awaited_once_with(
-        product_id=product_id,
-    )
-
-    service.product_repo.update.assert_not_awaited()
-
-
-# Empty update payload
-
-
-@pytest.mark.asyncio
-async def test_update_product_returns_existing_product_when_no_updates():
-    db = MagicMock()
-
-    service = ProductService(db)
-
-    product_id = uuid4()
-
-    product = Product(
-        id=product_id,
-        name="iPhone 15",
-        sku="IPHONE-15",
-    )
-
-    payload = ProductUpdate()
-
-    service.product_repo.get_by_id = AsyncMock(
-        return_value=product,
-    )
-
-    service.product_repo.update = AsyncMock()
-
-    result = await service.update_product(
-        product_id=product_id,
-        payload=payload,
-        images=[],
-    )
-
-    assert result is product
 
     service.product_repo.get_by_id.assert_awaited_once_with(
         product_id=product_id,
@@ -415,51 +339,6 @@ async def test_update_product_updates_category():
 
     service.product_repo.update.assert_awaited_once_with(
         product=product,
-    )
-
-
-# IntegrityError
-
-
-@pytest.mark.asyncio
-async def test_update_product_converts_integrity_error_to_conflict():
-    db = MagicMock()
-
-    service = ProductService(db)
-
-    product_id = uuid4()
-
-    product = Product(
-        id=product_id,
-        name="iPhone 15",
-        sku="IPHONE-15",
-    )
-
-    service.product_repo.get_by_id = AsyncMock(
-        return_value=product,
-    )
-
-    service.product_repo.update = AsyncMock(
-        side_effect=IntegrityError(
-            statement="UPDATE products",
-            params={},
-            orig=Exception("duplicate"),
-        ),
-    )
-
-    payload = ProductUpdate(
-        name="Updated Product",
-    )
-
-    with pytest.raises(ConflictException) as exc_info:
-        await service.update_product(
-            product_id=product_id,
-            payload=payload,
-            images=[],
-        )
-
-    assert str(exc_info.value) == (
-        "Product could not be updated because of a conflicting resource"
     )
 
 

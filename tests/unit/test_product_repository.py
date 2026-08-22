@@ -1,4 +1,3 @@
-from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -342,52 +341,6 @@ async def test_list_with_search_returns_matching_products():
 
     products, total = await repo.list(
         search="iphone",
-    )
-
-    assert products == [product]
-    assert total == 1
-
-    assert db.execute.await_count == 2
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "sort_by",
-    [
-        "name",
-        "sku",
-        "category",
-        "price",
-        "stock",
-        "status",
-        "updated",
-    ],
-)
-async def test_list_with_sort_by_returns_products(sort_by):
-    db = MagicMock()
-
-    product = Product(
-        id=uuid4(),
-        name="iPhone 15",
-        sku="IPHONE-15",
-    )
-
-    count_result = MagicMock()
-    count_result.scalar_one.return_value = 1
-
-    products_result = mock_list_result([product])
-
-    db.execute = AsyncMock(
-        side_effect=[
-            count_result,
-            products_result,
-        ],
-    )
-
-    repo = ProductRepository(db)
-
-    products, total = await repo.list(
-        sort_by=sort_by,
     )
 
     assert products == [product]

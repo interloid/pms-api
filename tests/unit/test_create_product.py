@@ -333,7 +333,7 @@ async def test_create_product_uploads_product_images():
 
 
 @pytest.mark.asyncio
-async def test_create_product_raises_runtime_error_when_created_product_cannot_be_retrieved():
+async def test_create_product_raises_error_when_created_product_cannot_retrieved():
     db = MagicMock()
     db.rollback = AsyncMock()
 

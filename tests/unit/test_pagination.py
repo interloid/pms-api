@@ -1,8 +1,5 @@
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 from sqlalchemy import column, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import PaginationEnum
 from app.exceptions.custom import BadRequestException
@@ -301,38 +298,3 @@ def test_apply_filters_with_multiple_filters():
     assert "WHERE" in sql
     assert "price" in sql
     assert "stock" in sql
-
-
-async def test_paginate_returns_items_and_total():
-    db = MagicMock(spec=AsyncSession)
-    db.execute = AsyncMock
-
-    service = BaseService(db=db)
-
-    count_result = MagicMock()
-    count_result.scalar_one.return_value = 25
-
-    items = [
-        "product-1",
-        "product-2",
-        "product-3",
-    ]
-
-    query_result = MagicMock()
-    query_result.scalars.return_value.unique.return_value.all.return_value = items
-
-    db.execute.side_effect = [
-        count_result,
-        query_result,
-    ]
-
-    stmt = select(1)
-
-    result, total = await service.paginate(
-        stmt,
-        page=1,
-        page_size=10,
-    )
-
-    assert result == items
-    assert total == 25

@@ -77,7 +77,7 @@ async def test_send_email_uses_smtp_settings():
     assert kwargs["port"] == settings.SMTP_PORT
     assert kwargs["username"] == settings.SMTP_USERNAME
     assert kwargs["password"] == settings.SMTP_PASSWORD
-    assert kwargs["start_tls"] == (settings.SMTP_USE_TLS)
+    assert kwargs["start_tls"] == (settings.SMTP_START_TLS)
 
 
 @pytest.mark.asyncio
