@@ -3,8 +3,11 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_user
 from app.core.constants import (
     PaginationEnum,
     ProductStatusEnum,
@@ -26,9 +29,7 @@ from app.schemas.response import (
 from app.services.product_service import ProductService
 
 router = APIRouter(
-    prefix="/products",
-    tags=["Products"],
-    # dependencies=[Depends(get_current_user)]
+    prefix="/products", tags=["Products"], dependencies=[Depends(get_current_user)]
 )
 
 
@@ -62,32 +63,37 @@ async def create_product(
     stock: Annotated[int, Form(...)],
     status: Annotated[ProductStatusEnum, Form(...)],
     description: Annotated[str | None, Form()] = None,
-    images: list[UploadFile] = File(default=[]),
-    # images: Annotated[UploadFile], File() = [],
+    images: Annotated[list[UploadFile], File()] = [],
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ProductResponse]:
 
-    payload = ProductCreate(
-        name=name,
-        sku=sku,
-        category_name=category_name,
-        price=price,
-        stock=stock,
-        status=status,
-        description=description,
-    )
+    try:
+        payload = ProductCreate(
+            name=name,
+            sku=sku,
+            category_name=category_name,
+            price=price,
+            stock=stock,
+            status=status,
+            description=description,
+        )
 
-    product_service = ProductService(db=db)
+        product_service = ProductService(db=db)
 
-    product = await product_service.create_product(
-        payload=payload,
-        images=images,
-    )
+        product = await product_service.create_product(
+            payload=payload,
+            images=images,
+        )
 
-    return ApiResponse(
-        message="Product created successfully",
-        data=to_product_response(product),
-    )
+        return ApiResponse(
+            message="Product created successfully",
+            data=to_product_response(product),
+        )
+
+    except ValidationError as exc:
+        raise RequestValidationError(
+            exc.errors(),
+        ) from exc
 
 
 @router.get(
@@ -218,35 +224,41 @@ async def update_product(
     status: Annotated[ProductStatusEnum | None, Form()] = None,
     description: Annotated[str | None, Form()] = None,
     primary_image_id: Annotated[UUID | None, Form()] = None,
-    images: list[UploadFile] = File(default=[]),
+    images: Annotated[list[UploadFile], File()] = [],
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ProductResponse]:
 
-    payload = ProductUpdate(
-        name=name,
-        sku=sku,
-        category_name=category_name,
-        price=price,
-        stock=stock,
-        status=status,
-        description=description,
-    )
+    try:
+        payload = ProductUpdate(
+            name=name,
+            sku=sku,
+            category_name=category_name,
+            price=price,
+            stock=stock,
+            status=status,
+            description=description,
+        )
 
-    product_service = ProductService(
-        db=db,
-    )
+        product_service = ProductService(
+            db=db,
+        )
 
-    product = await product_service.update_product(
-        product_id=product_id,
-        payload=payload,
-        images=images,
-        primary_image_id=primary_image_id,
-    )
+        product = await product_service.update_product(
+            product_id=product_id,
+            payload=payload,
+            images=images,
+            primary_image_id=primary_image_id,
+        )
 
-    return ApiResponse(
-        message="Product updated successfully",
-        data=to_product_response(product),
-    )
+        return ApiResponse(
+            message="Product updated successfully",
+            data=to_product_response(product),
+        )
+
+    except ValidationError as exc:
+        raise RequestValidationError(
+            exc.errors(),
+        ) from exc
 
 
 @router.delete(

@@ -198,6 +198,16 @@ class ProductService(BaseService[Product]):
             page_size=page_size,
         )
 
+        self.validate_pagination(
+            page=page,
+            page_size=page_size,
+        )
+
+        if min_price is not None and max_price is not None and min_price > max_price:
+            raise BadRequestException(
+                message="Minimum price cannot be greater than maximum price",
+            )
+
         normalized_sort_order = self.validate_sort_order(
             sort_order,
         )

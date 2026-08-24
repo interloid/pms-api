@@ -2,7 +2,10 @@ from email.message import EmailMessage
 
 import aiosmtplib
 
+from app.core.logging import get_logger
 from app.core.settings import settings
+
+logger = get_logger(__name__)
 
 
 async def send_email(
@@ -25,11 +28,31 @@ async def send_email(
         )
     else:
         message.set_content(body)
-    await aiosmtplib.send(
-        message,
-        hostname=settings.SMTP_HOST,
-        port=settings.SMTP_PORT,
-        username=settings.SMTP_USERNAME,
-        password=settings.SMTP_PASSWORD,
-        start_tls=settings.SMTP_START_TLS,
+
+    logger.info(
+        "Sending email | to=%s | from=%s | host=%s | port=%s",
+        to_email,
+        settings.SMTP_FROM_EMAIL,
+        settings.SMTP_HOST,
+        settings.SMTP_PORT,
     )
+    try:
+        await aiosmtplib.send(
+            message,
+            hostname=settings.SMTP_HOST,
+            port=settings.SMTP_PORT,
+            username=settings.SMTP_USERNAME,
+            password=settings.SMTP_PASSWORD,
+            start_tls=settings.SMTP_START_TLS,
+        )
+        logger.info(
+            "Email successfully accepted by SMTP server | to=%s",
+            to_email,
+        )
+
+    except Exception:
+        logger.exception(
+            "Failed to send email | to=%s",
+            to_email,
+        )
+        raise
