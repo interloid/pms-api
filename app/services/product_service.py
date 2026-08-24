@@ -58,6 +58,7 @@ class ProductService(BaseService[Product]):
     ) -> None:
 
         if len(images) > ProductImageConstants.MAX_IMAGES:
+            logger.warning(f"Maximum {ProductImageConstants.MAX_IMAGES} are not allowed")
             raise BadRequestException(
                 message=(
                     f"Maximum {ProductImageConstants.MAX_IMAGES} images are allowed"
@@ -66,11 +67,15 @@ class ProductService(BaseService[Product]):
 
         for image in images:
             if not image.filename:
+                logger.warning("Image filename is required | filename=%s",image.filename)
                 raise BadRequestException(
                     message="Image filename is required",
                 )
 
             if not image.content_type:
+                logger.warning(f"Content type could not be determined for '{image.filename}'"
+                    "content_type=%s",image.content_type
+                )
                 raise BadRequestException(
                     message=(
                         f"Content type could not be determined for '{image.filename}'"
@@ -78,6 +83,7 @@ class ProductService(BaseService[Product]):
                 )
 
             if image.content_type not in ProductImageConstants.ALLOWED_CONTENT_TYPES:
+                logger.warning("Unsupported image type content_type=%s",f"{image.content_type}")
                 raise BadRequestException(
                     message=(
                         f"Unsupported image type '{image.content_type}'. "
@@ -85,11 +91,13 @@ class ProductService(BaseService[Product]):
                     ),
                 )
             if image.size is None:
+                logger.warning("Could not determine size for size=%s",f"{image.size}")
                 raise BadRequestException(
                     message=(f"Could not determine size for '{image.filename}'"),
                 )
 
             if image.size > ProductImageConstants.MAX_FILE_SIZE:
+                logger.warning("Image exceeds the maximum size of 5 MB size=%s",f"{image.size}")
                 raise BadRequestException(
                     message=(
                         f"Image '{image.filename}' exceeds the maximum size of 5 MB"
@@ -105,6 +113,9 @@ class ProductService(BaseService[Product]):
         existing_product = await self.product_repo.get_by_sku(sku=payload.sku)
 
         if existing_product is not None:
+            logger.warning("Product with this SKU already exists | sku=%s",
+                payload.sku
+            )
             raise ConflictException(
                 message="Product with this SKU already exists",
             )
@@ -114,6 +125,9 @@ class ProductService(BaseService[Product]):
         category = await self.category_repo.get_by_name(name=category_name)
 
         if category is None:
+            logger.warning("Category not found | category=%s",
+                category
+            )
             raise NotFoundException(message="Category not found")
 
         product = Product(
@@ -149,6 +163,7 @@ class ProductService(BaseService[Product]):
             )
 
             if product is None:
+                logger.warning("Product not found after creation")
                 raise RuntimeError("Product not found after creation")
 
             return product
@@ -174,6 +189,7 @@ class ProductService(BaseService[Product]):
         product = await self.product_repo.get_by_id(product_id=product_id)
 
         if product is None:
+            logger.warning("Product not found | product_id=%s",product_id)
             raise NotFoundException(message="Product not found")
 
         return product
@@ -204,6 +220,9 @@ class ProductService(BaseService[Product]):
         )
 
         if min_price is not None and max_price is not None and min_price > max_price:
+            logger.warning("Minimum price cannot be greater than maximum price | "
+                "min_price=%s | max_price=%s",min_price,max_price          
+            )
             raise BadRequestException(
                 message="Minimum price cannot be greater than maximum price",
             )
@@ -302,6 +321,7 @@ class ProductService(BaseService[Product]):
         )
 
         if product is None:
+            logger.warning("product not found | product_id=%s",product_id)
             raise NotFoundException(
                 message="Product not found",
             )
@@ -314,6 +334,9 @@ class ProductService(BaseService[Product]):
             )
 
             if existing_product is not None and existing_product.id != product.id:
+                logger.warning("Product with this SKU already exists | sku=%s",
+                    updates["sku"]
+                )
                 raise ConflictException(
                     message="Product with this SKU already exists",
                 )
@@ -326,6 +349,7 @@ class ProductService(BaseService[Product]):
             )
 
             if category is None:
+                logger.warning("Category not found | category=%s",category)
                 raise NotFoundException(
                     message="Category not found",
                 )
@@ -357,6 +381,8 @@ class ProductService(BaseService[Product]):
 
         except IntegrityError as exc:
             await self.db.rollback()
+            
+            logger.warning("Product could not be updated of a conflicting resource")
 
             raise ConflictException(
                 message=(
@@ -371,6 +397,7 @@ class ProductService(BaseService[Product]):
         )
 
         if product is None:
+            logger.warning("product not found product_id=%s",product_id)
             raise NotFoundException(message="Product not found")
 
         await self.product_image_service.delete_by_product_id(

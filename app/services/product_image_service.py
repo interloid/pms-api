@@ -109,6 +109,9 @@ class ProductImageService:
         )
 
         if image is None:
+            logger.warning("Product image not found | product_id=%s | image_id=%s",
+                product_id,image_id
+            )
             raise NotFoundException(message="Product image not found")
 
         return image
