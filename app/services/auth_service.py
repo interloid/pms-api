@@ -11,12 +11,13 @@ from app.core.oauth.client import get_oauth_client
 from app.core.oauth.config import OAUTH_PROVIDERS
 from app.core.oauth.state import generate_oauth_state
 from app.core.passcode import (
+    check_passcode_request_limit,
     delete_passcode,
-    delete_passcode_attempts,
     generate_passcode,
     get_passcode,
     get_passcode_attempts,
     increment_passcode_attempts,
+    reset_passcode_attempts,
     store_passcode,
 )
 from app.core.security import (
@@ -52,7 +53,7 @@ logger = get_logger(__name__)
 
 
 class AuthService:
-    def __init__(self, db: AsyncSession, redis: Redis | None = None):
+    def __init__(self, db: AsyncSession, redis: Redis):
         self.db = db
         self.user_repo = UserRepository(db)
         self.session_repo = SessionRepository(db)
@@ -91,7 +92,7 @@ class AuthService:
             )
 
             await self.session_repo.create(session)
-            logger.info("User created Successfully | user_id=%s",user.id)
+            logger.info("User created Successfully | user_id=%s", user.id)
 
             await self.db.commit()
 
@@ -219,8 +220,11 @@ class AuthService:
         self,
         *,
         email: str,
+        client_ip: str,
         redis: Redis,
     ) -> None:
+
+        email = email.strip().lower()
 
         user = await self.user_repo.get_by_email(email)
 
@@ -230,9 +234,10 @@ class AuthService:
                 message="Invalid email passcode verification attempt.",
             )
 
-        await delete_passcode_attempts(
+        await check_passcode_request_limit(
             redis=redis,
             email=email,
+            client_ip=client_ip,
         )
 
         passcode = generate_passcode()
@@ -259,6 +264,8 @@ class AuthService:
     ) -> ApiResponse[LoginResponse]:
 
         try:
+            email = email.strip().lower()
+
             user = await self.user_repo.get_by_email(email)
 
             if user is not None and not user.is_active:
@@ -289,9 +296,7 @@ class AuthService:
             )
 
             if stored_hash is None:
-                logger.warning("Invalid or expired passcode | passcode=%s",
-                    passcode
-                )
+                logger.warning("Invalid or expired passcode")
                 raise UnauthorizedException(
                     message="Invalid or expired passcode.",
                 )
@@ -304,10 +309,7 @@ class AuthService:
                     redis=redis,
                     email=email,
                 )
-                logger.warning("Invalid or expired passcode | passcode=%s",
-                    passcode
-                )
-
+                logger.warning("Invalid or expired passcode")
                 raise UnauthorizedException(
                     message="Invalid or expired passcode.",
                 )
@@ -317,7 +319,7 @@ class AuthService:
                 email=email,
             )
 
-            await delete_passcode_attempts(
+            await reset_passcode_attempts(
                 redis=redis,
                 email=email,
             )
@@ -330,7 +332,7 @@ class AuthService:
                 )
 
                 await self.user_repo.create(user)
-            logger.info("User created Successfully | email=%s",email)
+            logger.info("User created Successfully | email=%s", email)
 
             session = Session(
                 user_id=user.id,
@@ -459,9 +461,7 @@ class AuthService:
             config = OAUTH_PROVIDERS.get(provider)
 
             if config is None:
-                logger.warning("OAuth provider not supported | provider=%s",
-                    provider
-                )
+                logger.warning("OAuth provider not supported | provider=%s", provider)
                 raise NotFoundException(
                     message="OAuth provider not supported",
                 )
@@ -495,8 +495,6 @@ class AuthService:
 
             userinfo = userinfo_response.json()
 
-            userinfo_response.raise_for_status()
-
             if provider == "github":
                 provider_user_id = str(userinfo["id"])
 
@@ -514,17 +512,15 @@ class AuthService:
                 email = userinfo.get("email")
 
                 if not email:
-                    logger.warning("Google account does not provide an email | email=%s",
-                        email
+                    logger.warning(
+                        "Google account does not provide email | email=%s", email
                     )
                     raise UnauthorizedException(
                         message="Google account does not provide an email",
                     )
 
                 if userinfo.get("email_verified") is not True:
-                    logger.warning("Google email is not verified | email=%s",
-                        email
-                    )
+                    logger.warning("Google email is not verified | email=%s", email)
                     raise UnauthorizedException(
                         message="Google email is not verified",
                     )
@@ -538,8 +534,8 @@ class AuthService:
                 email = userinfo.get("email")
 
                 if not email:
-                    logger.warning("Microsoft account does not provide an email | email=%s",
-                        email
+                    logger.warning(
+                        "Microsoft account does not provide an email| email=%s", email
                     )
                     raise UnauthorizedException(
                         message="Microsoft account does not provide an email",
@@ -566,8 +562,8 @@ class AuthService:
                 user = await self.user_repo.get_by_id(identity.user_id)
 
                 if user is None:
-                    logger.warning("User associated with OAuth identity not found | user=%s",
-                        user
+                    logger.warning(
+                        "User associated with OAuth identity not found| user=%s", user
                     )
                     raise NotFoundException(
                         message="User associated with OAuth identity not found",
@@ -577,8 +573,8 @@ class AuthService:
                 user = await self.user_repo.get_by_email(email)
 
                 if user is not None:
-                    logger.warning("An account with this email already exists| user=%s",
-                        user
+                    logger.warning(
+                        "An account with this email already exists| user=%s", user
                     )
                     raise ConflictException(
                         message=(
@@ -605,9 +601,7 @@ class AuthService:
                 await self.user_identity_repo.create(identity)
 
             if not user.is_active:
-                logger.warning("User account is inactive| user=%s",
-                    user
-                )
+                logger.warning("User account is inactive| user=%s", user)
                 raise UnauthorizedException(message="User account is inactive")
 
             logger.info(
@@ -666,10 +660,8 @@ class AuthService:
         for email_data in emails:
             if email_data.get("verified"):
                 return email_data["email"]
-            
-        logger.warning("No verified email found for GitHub account | emails=%s",
-            emails
-        )
+
+        logger.warning("No verified email found for GitHub account | emails=%s", emails)
 
         raise UnauthorizedException(
             message="No verified email found for GitHub account",

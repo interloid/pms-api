@@ -83,6 +83,16 @@ class ProductImageService:
             return uploaded_images
 
         except Exception:
+            for product_image in uploaded_images:
+                try:
+                    await self.product_image_repo.delete(product_image)
+                except Exception:
+                    logger.exception(
+                        "Failed to clean up ProductImage after "
+                        "image upload failure | image_id=%s",
+                        product_image.id,
+                    )
+
             for object_key in uploaded_object_keys:
                 try:
                     await self.s3_service.delete_file(
@@ -109,8 +119,10 @@ class ProductImageService:
         )
 
         if image is None:
-            logger.warning("Product image not found | product_id=%s | image_id=%s",
-                product_id,image_id
+            logger.warning(
+                "Product image not found | product_id=%s | image_id=%s",
+                product_id,
+                image_id,
             )
             raise NotFoundException(message="Product image not found")
 
@@ -151,8 +163,6 @@ class ProductImageService:
         object_key = image.object_key
 
         await self.product_image_repo.delete(image)
-
-        await self.db.commit()
 
         try:
             await self.s3_service.delete_file(object_key=object_key)

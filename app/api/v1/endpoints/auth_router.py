@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, Response
+from fastapi import APIRouter, Cookie, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,6 +87,9 @@ async def logout(
     response.delete_cookie(
         key="session",
         path="/",
+        secure=True,
+        httponly=True,
+        samesite="none",
     )
 
     return ApiResponse(
@@ -121,6 +124,7 @@ async def session(
 
 @router.post("/passcode/request")
 async def request_passcode(
+    request: Request,
     login_data: PasscodeRequest,
     redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
@@ -129,6 +133,7 @@ async def request_passcode(
 
     await service.request_passcode(
         email=login_data.email,
+        client_ip=request.client.host,
         redis=redis,
     )
 

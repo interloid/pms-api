@@ -44,9 +44,15 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = "Product Management System"
     SMTP_START_TLS: bool = True
 
+    PASSCODE_PEPPER: str
+
     PASSCODE_EXPIRE_SECONDS: int = 300
     PASSCODE_LENGTH: int = 6
     PASSCODE_MAX_ATTEMPTS: int = 3
+
+    PASSCODE_REQUEST_EMAIL_LIMIT: int = 3
+    PASSCODE_REQUEST_IP_LIMIT: int = 10
+    PASSCODE_REQUEST_WINDOW_SECONDS: int = 900
 
     CORS_ORIGINS: str
     YOUR_REACT_URL: str
