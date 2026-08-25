@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
@@ -223,13 +224,28 @@ async def update_product(
     stock: Annotated[int | None, Form()] = None,
     status: Annotated[ProductStatusEnum | None, Form()] = None,
     description: Annotated[str | None, Form()] = None,
-    removed_image_ids: Annotated[list[UUID] | None, Form()] = None,
+    removed_image_ids: Annotated[str | None, Form()] = None,
     primary_image_id: Annotated[UUID | None, Form()] = None,
     images: Annotated[list[UploadFile], File()] = [],
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ProductResponse]:
 
     try:
+        parsed_removed_image_ids: list[UUID] | None = None
+
+        if removed_image_ids:
+            parsed_ids = json.loads(removed_image_ids)
+
+            if not isinstance(parsed_ids, list):
+                raise ValueError(
+                    "removed_image_ids must be a JSON array"
+                )
+
+            parsed_removed_image_ids = [
+                UUID(image_id)
+                for image_id in parsed_ids
+            ]
+            
         payload = ProductUpdate(
             name=name,
             sku=sku,
@@ -248,7 +264,7 @@ async def update_product(
             product_id=product_id,
             payload=payload,
             images=images,
-            removed_image_ids=removed_image_ids,
+            removed_image_ids=parsed_removed_image_ids,
             primary_image_id=primary_image_id,
         )
 
@@ -256,6 +272,20 @@ async def update_product(
             message="Product updated successfully",
             data=to_product_response(product),
         )
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "value_error",
+                    "loc": ["body", "removed_image_ids"],
+                    "msg": (
+                        "removed_image_ids must be a valid "
+                        "JSON array of UUIDs"
+                    ),
+                    "input": removed_image_ids,
+                }
+            ],
+        ) from exc
 
     except ValidationError as exc:
         raise RequestValidationError(

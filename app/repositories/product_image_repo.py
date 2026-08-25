@@ -60,6 +60,7 @@ class ProductImageRepository:
             update(ProductImage)
             .where(ProductImage.product_id == product_id)
             .values(is_primary=False)
+            .execution_options(synchronize_session="fetch")
         )
         await self.db.execute(stmt)
 

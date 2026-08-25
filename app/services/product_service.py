@@ -418,6 +418,8 @@ class ProductService(BaseService[Product]):
             if product is None:
                 raise NotFoundException(message="Product not found")
             
+            await self.db.refresh(product, ["images"])
+            
             await self._cleanup_s3(images_to_delete)
 
             return product
