@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+from redis.asyncio import Redis
 from uuid import uuid4
 
 import pytest
@@ -10,6 +11,12 @@ from app.exceptions.custom import (
 from app.models.session_model import Session
 from app.services.auth_service import AuthService
 
+@pytest.fixture
+def auth_service(db, redis):
+    return AuthService(
+        db=db,
+        redis=redis,
+    )
 
 def make_user(
     *,
@@ -52,7 +59,10 @@ async def test_rollback_calls_db_rollback():
     db = MagicMock()
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     await service._rollback()
 
@@ -65,7 +75,10 @@ async def test_login_returns_successful_login_response():
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     user = make_user()
 
@@ -126,7 +139,10 @@ async def test_login_creates_session_with_remember_me_false():
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     user = make_user()
 
@@ -168,7 +184,10 @@ async def test_login_raises_unauthorized_when_user_does_not_exist():
     db.rollback = AsyncMock()
     db.commit = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     login_data = make_login_data()
 
@@ -199,7 +218,10 @@ async def test_login_raises_unauthorized_when_user_has_no_password():
     db.rollback = AsyncMock()
     db.commit = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     user = make_user(
         hashed_password=None,
@@ -232,7 +254,10 @@ async def test_login_raises_unauthorized_when_password_is_invalid():
     db.rollback = AsyncMock()
     db.commit = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     user = make_user()
 
@@ -272,7 +297,10 @@ async def test_login_raises_unauthorized_when_user_is_inactive():
     db.rollback = AsyncMock()
     db.commit = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     user = make_user(
         is_active=False,
@@ -314,7 +342,10 @@ async def test_login_rolls_back_when_get_user_raises_exception():
     db.rollback = AsyncMock()
     db.commit = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     login_data = make_login_data()
 
@@ -347,7 +378,10 @@ async def test_login_rolls_back_when_session_creation_fails():
     db.rollback = AsyncMock()
     db.commit = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     user = make_user()
 
@@ -396,7 +430,10 @@ async def test_login_rolls_back_when_commit_fails():
 
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     user = make_user()
 
@@ -442,7 +479,10 @@ async def test_login_rolls_back_when_session_repo_raises_app_exception():
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     user = make_user()
 
@@ -480,7 +520,10 @@ async def test_logout_deletes_existing_session():
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     session_id = uuid4()
 
@@ -517,7 +560,10 @@ async def test_logout_returns_success_when_session_does_not_exist():
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     session_id = uuid4()
 
@@ -549,7 +595,10 @@ async def test_logout_rolls_back_when_get_session_fails():
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     session_id = uuid4()
 
@@ -582,7 +631,10 @@ async def test_logout_rolls_back_when_delete_fails():
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     session_id = uuid4()
 
@@ -626,7 +678,10 @@ async def test_logout_rolls_back_when_commit_fails():
 
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     session_id = uuid4()
 
@@ -660,7 +715,10 @@ async def test_logout_rolls_back_when_delete_raises_app_exception():
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    service = AuthService(
+        db=db,
+        redis=MagicMock(spec=Redis),
+    )
 
     session_id = uuid4()
 

@@ -68,7 +68,7 @@ class ProductService(BaseService[Product]):
         for image in images:
             if not image.filename:
                 logger.warning(
-                    "Image filename is required | filename=%s", image.filename
+                    "Image filename is required | filename=%s",f"{image.filename}"
                 )
                 raise BadRequestException(
                     message="Image filename is required",
@@ -111,6 +111,18 @@ class ProductService(BaseService[Product]):
                     message=(
                         f"Image '{image.filename}' exceeds the maximum size of 5 MB"
                     ),
+                )
+                
+    async def _cleanup_s3(self, object_keys: list[str]) -> None:
+        for object_key in object_keys:
+            try:
+                await self.product_image_service.s3_service.delete_file(
+                    object_key=object_key,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to clean up S3 object | object_key=%s",
+                    object_key,
                 )
 
     async def create_product(
@@ -364,13 +376,14 @@ class ProductService(BaseService[Product]):
         for field, value in updates.items():
             setattr(product, field, value)
 
-        images_to_delete = []
+        images_to_delete: list[str] = []
         uploaded_object_keys: list[str] = []
 
         try:
             product = await self.product_repo.update(
                 product=product,
             )
+            
             if removed_image_ids:
                 for image_id in removed_image_ids:
                     image = await self.product_image_service.get_image(
@@ -380,7 +393,9 @@ class ProductService(BaseService[Product]):
 
                     images_to_delete.append(image.object_key)
 
-                    await self.product_image_repo.delete(image)
+                    await self.product_image_service.product_image_repo.delete(
+                        image
+                    )
 
             if images:
                 uploaded_images = await self.product_image_service.add_images(
@@ -388,7 +403,8 @@ class ProductService(BaseService[Product]):
                     images=images,
                 )
                 uploaded_object_keys.extend(
-                    image.object_key for image in uploaded_images
+                    image.object_key 
+                    for image in uploaded_images
                 )
 
             if primary_image_id is not None:
@@ -398,26 +414,20 @@ class ProductService(BaseService[Product]):
                 )
 
             product = await self.product_repo.get_by_id(product.id)
+            
+            if product is None:
+                raise NotFoundException(message="Product not found")
+            
+            await self._cleanup_s3(images_to_delete)
 
             return product
 
         except IntegrityError as exc:
-            await self.db.rollback()
+            await self._cleanup_s3(uploaded_object_keys)
 
-            for object_key in uploaded_object_keys:
-                try:
-                    await self.product_image_service.s3_service.delete_file(
-                        object_key=object_key,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to clean up S3 object after "
-                        "product update failure | object_key=%s",
-                        object_key,
-                    )
-
-            logger.warning("Product could not be updated of a conflicting resource")
-
+            logger.warning(
+                "Product could not be updated because of a conflicting resource"
+            )
             raise ConflictException(
                 message=(
                     "Product could not be updated because of a conflicting resource"
@@ -425,18 +435,7 @@ class ProductService(BaseService[Product]):
             ) from exc
 
         except Exception:
-            for object_key in uploaded_object_keys:
-                try:
-                    await self.product_image_service.s3_service.delete_file(
-                        object_key=object_key,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to clean up S3 object after "
-                        "product update failure | object_key=%s",
-                        object_key,
-                    )
-
+            await self._cleanup_s3(uploaded_object_keys)
             raise
 
     async def delete_product(self, product_id: UUID) -> None:

@@ -42,7 +42,7 @@ class BaseService[T]:
 
         if page_size > PaginationEnum.MAX_PAGE_SIZE:
             logger.warning(
-                "Page size must be less than or equal to MAX_PAGE_SIZ| page_size=%s",
+                "Page size must be less than or equal to MAX_PAGE_SIZE | page_size=%s",
                 page_size,
             )
             raise BadRequestException(

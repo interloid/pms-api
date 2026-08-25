@@ -223,7 +223,7 @@ async def update_product(
     stock: Annotated[int | None, Form()] = None,
     status: Annotated[ProductStatusEnum | None, Form()] = None,
     description: Annotated[str | None, Form()] = None,
-    removed_image_ids: Annotated[UUID | None, Form()] = None,
+    removed_image_ids: Annotated[list[UUID] | None, Form()] = None,
     primary_image_id: Annotated[UUID | None, Form()] = None,
     images: Annotated[list[UploadFile], File()] = [],
     db: AsyncSession = Depends(get_db),

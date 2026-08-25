@@ -147,12 +147,16 @@ async def test_update_product_updates_product():
     updated_product = Product(
         id=product_id,
         name="iPhone 15 Pro",
-        price=Decimal("799.99"),
+        price=Decimal("999.99"),
+        stock=15,
         sku="IPHONE-15",
     )
 
     service.product_repo.get_by_id = AsyncMock(
-        return_value=product,
+        side_effect=[
+            product,
+            updated_product,
+        ],
     )
 
     service.product_repo.update = AsyncMock(
@@ -174,10 +178,14 @@ async def test_update_product_updates_product():
     assert result is updated_product
 
     assert product.name == "iPhone 15 Pro"
+    assert product.price == Decimal("999.99")
+    assert product.stock == 15
 
     service.product_repo.update.assert_awaited_once_with(
         product=product,
     )
+
+    assert service.product_repo.get_by_id.await_count == 2
 
 
 # SKU conflict
@@ -309,7 +317,10 @@ async def test_update_product_updates_category():
     )
 
     service.product_repo.get_by_id = AsyncMock(
-        return_value=product,
+        side_effect=[
+            product,
+            product,
+        ],
     )
 
     service.category_repo.get_by_name = AsyncMock(
@@ -340,6 +351,8 @@ async def test_update_product_updates_category():
     service.product_repo.update.assert_awaited_once_with(
         product=product,
     )
+
+    service.product_repo.get_by_id.assert_awaited()
 
 
 # list_products with default parameters

@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock
+from  redis.asyncio import Redis
 from uuid import uuid4
 
 import pytest
@@ -14,6 +15,13 @@ from app.models.user_model import User
 from app.services.auth_service import AuthService
 from app.utils.helpers import utc_now
 
+@pytest.fixture
+def auth_service(db, redis):
+    return AuthService(
+        db=db,
+        redis=redis,
+    )
+
 
 def build_service():
     db = MagicMock()
@@ -21,7 +29,13 @@ def build_service():
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
 
-    service = AuthService(db)
+    redis = MagicMock(spec=Redis)
+    redis.delete = AsyncMock()
+
+    service = AuthService(
+        db=db,
+        redis=redis,
+    )
 
     service.user_repo = MagicMock()
     service.user_identity_repo = MagicMock()
@@ -105,12 +119,35 @@ def build_oauth_client(
 
 @pytest.mark.asyncio
 async def test_verify_email_passcode_creates_new_user(monkeypatch):
-    service, db = build_service()
+    db = MagicMock()
+    db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+
+    redis = MagicMock(spec=Redis)
+    redis.get = AsyncMock(return_value=None)
+    redis.delete = AsyncMock()
+    redis.set = AsyncMock()
+
+    service = AuthService(
+        db=db,
+        redis=redis,
+    )
+
+    service.user_repo = MagicMock()
+    service.user_identity_repo = MagicMock()
+    service.session_repo = MagicMock()
+    service.oauth_state_repo = MagicMock()
+
+    service.user_repo.get_by_email = AsyncMock(
+        return_value=None,
+    )
+
+    service.user_repo.create = AsyncMock()
+
+    service.session_repo.create = AsyncMock()
 
     user_id = uuid4()
     session_id = uuid4()
-
-    service.user_repo.get_by_email.return_value = None
 
     async def create_user(user):
         user.id = user_id
@@ -143,20 +180,16 @@ async def test_verify_email_passcode_creates_new_user(monkeypatch):
         AsyncMock(),
     )
 
-    monkeypatch.setattr(
-        "app.services.auth_service.delete_passcode_attempts",
-        AsyncMock(),
-    )
-
     response = await service.verify_email_passcode(
         email="new@example.com",
         passcode="123456",
-        redis=MagicMock(),
+        redis=redis,
     )
 
     assert response.message == "Login successful"
 
     assert response.data.session_id == session_id
+
     assert response.data.user.id == user_id
     assert response.data.user.email == "new@example.com"
     assert response.data.user.first_name == "User"
@@ -167,6 +200,7 @@ async def test_verify_email_passcode_creates_new_user(monkeypatch):
     service.session_repo.create.assert_awaited_once()
 
     db.commit.assert_awaited_once()
+    db.rollback.assert_not_awaited()
 
 
 @pytest.mark.asyncio

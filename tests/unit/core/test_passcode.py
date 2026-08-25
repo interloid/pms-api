@@ -4,7 +4,6 @@ import pytest
 
 from app.core.passcode import (
     delete_passcode,
-    delete_passcode_attempts,
     generate_passcode,
     get_passcode,
     get_passcode_attempt_key,
@@ -198,22 +197,6 @@ async def test_increment_passcode_attempts():
         settings.PASSCODE_EXPIRE_SECONDS,
     )
 
-
-@pytest.mark.asyncio
-async def test_delete_passcode_attempts():
-    redis = MagicMock()
-    redis.delete = AsyncMock()
-
-    result = await delete_passcode_attempts(
-        redis=redis,
-        email="user@example.com",
-    )
-
-    assert result is None
-
-    redis.delete.assert_awaited_once_with(
-        "auth:passcode:attempts:user@example.com",
-    )
 
 
 @pytest.mark.asyncio

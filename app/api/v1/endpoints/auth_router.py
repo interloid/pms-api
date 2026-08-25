@@ -36,9 +36,10 @@ router = APIRouter(
 async def login(
     login_data: LoginRequest,
     response: Response,
+    redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
-    service = AuthService(db)
+    service = AuthService(db=db, redis=redis)
 
     result = await service.login(login_data)
 
@@ -72,6 +73,7 @@ async def logout(
         default=None,
         alias="session",
     ),
+    redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
     if session_id is not None:
@@ -81,7 +83,7 @@ async def logout(
             parsed_session_id = None
 
         if parsed_session_id is not None:
-            service = AuthService(db)
+            service = AuthService(db=db, redis=redis)
             await service.logout(parsed_session_id)
 
     response.delete_cookie(
@@ -103,6 +105,7 @@ async def session(
         default=None,
         alias="session",
     ),
+    redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
     if session is None:
@@ -117,7 +120,7 @@ async def session(
             message="Invalid session",
         ) from exc
 
-    service = AuthService(db)
+    service = AuthService(db=db, redis=redis)
 
     return await service.get_current_session(session_id)
 
@@ -129,11 +132,11 @@ async def request_passcode(
     redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
-    service = AuthService(db)
+    service = AuthService(db=db, redis=redis)
 
     await service.request_passcode(
         email=login_data.email,
-        client_ip=request.client.host,
+        client_ip=request.client.host or "unknown",
         redis=redis,
     )
 
@@ -149,7 +152,7 @@ async def verify_passcode(
     redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
-    service = AuthService(db)
+    service = AuthService(db=db, redis=redis)
 
     result = await service.verify_email_passcode(
         email=login_data.email,
