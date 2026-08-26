@@ -132,6 +132,7 @@ async def test_update_product_raises_not_found_when_product_does_not_exist():
 @pytest.mark.asyncio
 async def test_update_product_updates_product():
     db = MagicMock()
+    db.refresh = AsyncMock()
 
     service = ProductService(db)
 
@@ -299,6 +300,7 @@ async def test_update_product_raises_not_found_when_category_does_not_exist():
 @pytest.mark.asyncio
 async def test_update_product_updates_category():
     db = MagicMock()
+    db.refresh = AsyncMock()
 
     service = ProductService(db)
 
