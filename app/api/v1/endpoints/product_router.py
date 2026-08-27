@@ -1,11 +1,10 @@
-import json
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
@@ -15,6 +14,7 @@ from app.core.constants import (
 )
 from app.db.session import get_db
 from app.exceptions.global_exception import CRUD_ERROR_RESPONSES
+from app.exceptions.custom import BadRequestException
 from app.models.product_model import Product
 from app.schemas.product_image_schema import ProductImageResponse
 from app.schemas.product_schema import (
@@ -187,13 +187,13 @@ async def list_products(
 
 
 @router.get(
-    "/{product_id}",
+    "/{id}",
     response_model=ApiResponse[ProductResponse],
     status_code=status.HTTP_200_OK,
     responses=CRUD_ERROR_RESPONSES,
 )
 async def get_product(
-    product_id: UUID,
+    id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ProductResponse]:
     product_service = ProductService(
@@ -201,7 +201,7 @@ async def get_product(
     )
 
     product = await product_service.get_product(
-        product_id=product_id,
+        product_id=id,
     )
 
     return ApiResponse(
@@ -209,14 +209,44 @@ async def get_product(
     )
 
 
+removed_image_ids_adapter = TypeAdapter(list[UUID])
+
+
+def parse_removed_image_ids(
+    value: str | None,
+) -> list[UUID] | None:
+    if not value:
+        return None
+
+    try:
+        return removed_image_ids_adapter.validate_json(value)
+
+    except ValidationError as exc:
+        errors = []
+
+        for error in exc.errors():
+            errors.append(
+                {
+                    **error,
+                    "loc": (
+                        "body",
+                        "removed_image_ids",
+                        *error["loc"],
+                    ),
+                }
+            )
+
+        raise RequestValidationError(errors) from exc
+
+
 @router.patch(
-    "/{product_id}",
+    "/{id}",
     response_model=ApiResponse[ProductResponse],
     status_code=status.HTTP_200_OK,
     responses=CRUD_ERROR_RESPONSES,
 )
 async def update_product(
-    product_id: UUID,
+    id: UUID,
     name: Annotated[str | None, Form()] = None,
     sku: Annotated[str | None, Form()] = None,
     category_name: Annotated[str | None, Form()] = None,
@@ -226,44 +256,56 @@ async def update_product(
     description: Annotated[str | None, Form()] = None,
     removed_image_ids: Annotated[str | None, Form()] = None,
     primary_image_id: Annotated[UUID | None, Form()] = None,
-    images: Annotated[list[UploadFile], File()] = [],
+    images: Annotated[list[UploadFile | str] | None, File()] = None,
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ProductResponse]:
 
     try:
-        parsed_removed_image_ids: list[UUID] | None = None
-
-        if removed_image_ids:
-            parsed_ids = json.loads(removed_image_ids)
-
-            if not isinstance(parsed_ids, list):
-                raise ValueError(
-                    "removed_image_ids must be a JSON array"
-                )
-
-            parsed_removed_image_ids = [
-                UUID(image_id)
-                for image_id in parsed_ids
-            ]
-            
-        payload = ProductUpdate(
-            name=name,
-            sku=sku,
-            category_name=category_name,
-            price=price,
-            stock=stock,
-            status=status,
-            description=description,
+        parsed_removed_image_ids = parse_removed_image_ids(
+            removed_image_ids,
         )
+        normalized_images: list[UploadFile] = []
+
+        if images:
+            normalized_images = [
+                image
+                for image in images
+                if isinstance(image, UploadFile)
+            ]
+        
+        if (
+            primary_image_id is not None
+            and parsed_removed_image_ids
+            and primary_image_id in parsed_removed_image_ids
+        ):
+            raise BadRequestException(
+                message="Primary image cannot also be removed",
+            )
+
+        payload_data = {
+            field: value
+            for field, value in {
+                "name": name,
+                "sku": sku,
+                "category_name": category_name,
+                "price": price,
+                "stock": stock,
+                "status": status,
+                "description": description,
+            }.items()
+            if value is not None
+        }
+
+        payload = ProductUpdate(**payload_data)
 
         product_service = ProductService(
             db=db,
         )
 
         product = await product_service.update_product(
-            product_id=product_id,
+            product_id=id,
             payload=payload,
-            images=images,
+            images=normalized_images,
             removed_image_ids=parsed_removed_image_ids,
             primary_image_id=primary_image_id,
         )
@@ -272,20 +314,6 @@ async def update_product(
             message="Product updated successfully",
             data=to_product_response(product),
         )
-    except (json.JSONDecodeError, ValueError, TypeError) as exc:
-        raise RequestValidationError(
-            [
-                {
-                    "type": "value_error",
-                    "loc": ["body", "removed_image_ids"],
-                    "msg": (
-                        "removed_image_ids must be a valid "
-                        "JSON array of UUIDs"
-                    ),
-                    "input": removed_image_ids,
-                }
-            ],
-        ) from exc
 
     except ValidationError as exc:
         raise RequestValidationError(
@@ -294,12 +322,12 @@ async def update_product(
 
 
 @router.delete(
-    "/{product_id}",
+    "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses=CRUD_ERROR_RESPONSES,
 )
 async def delete_product(
-    product_id: UUID,
+    id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     product_service = ProductService(
@@ -307,7 +335,7 @@ async def delete_product(
     )
 
     await product_service.delete_product(
-        product_id=product_id,
+        product_id=id,
     )
 
     return Response(

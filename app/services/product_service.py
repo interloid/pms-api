@@ -68,7 +68,7 @@ class ProductService(BaseService[Product]):
         for image in images:
             if not image.filename:
                 logger.warning(
-                    "Image filename is required | filename=%s",f"{image.filename}"
+                    "Image filename is required | filename=%s", f"{image.filename}"
                 )
                 raise BadRequestException(
                     message="Image filename is required",
@@ -112,7 +112,7 @@ class ProductService(BaseService[Product]):
                         f"Image '{image.filename}' exceeds the maximum size of 5 MB"
                     ),
                 )
-                
+
     async def _cleanup_s3(self, object_keys: list[str]) -> None:
         for object_key in object_keys:
             try:
@@ -383,7 +383,7 @@ class ProductService(BaseService[Product]):
             product = await self.product_repo.update(
                 product=product,
             )
-            
+
             if removed_image_ids:
                 for image_id in removed_image_ids:
                     image = await self.product_image_service.get_image(
@@ -394,7 +394,7 @@ class ProductService(BaseService[Product]):
                     images_to_delete.append(image.object_key)
 
                     await self.product_image_service.product_image_repo.delete(
-                        image
+                        image=image
                     )
 
             if images:
@@ -403,8 +403,7 @@ class ProductService(BaseService[Product]):
                     images=images,
                 )
                 uploaded_object_keys.extend(
-                    image.object_key 
-                    for image in uploaded_images
+                    image.object_key for image in uploaded_images
                 )
 
             if primary_image_id is not None:
@@ -414,12 +413,12 @@ class ProductService(BaseService[Product]):
                 )
 
             product = await self.product_repo.get_by_id(product.id)
-            
+
             if product is None:
                 raise NotFoundException(message="Product not found")
-            
+
             await self.db.refresh(product, ["images"])
-            
+
             await self._cleanup_s3(images_to_delete)
 
             return product

@@ -260,4 +260,3 @@ async def test_delete_removes_product():
     db.delete.assert_awaited_once_with(product)
 
     db.flush.assert_awaited_once()
-

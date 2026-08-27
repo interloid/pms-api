@@ -15,4 +15,3 @@ router.include_router(
 
 router.include_router(auth_router.router)
 router.include_router(product_router.router)
-

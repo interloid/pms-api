@@ -113,7 +113,7 @@ def test_logout_revokes_valid_session_and_deletes_cookie(client):
 
     assert response.status_code == 200
     assert response.json()["message"] == "Logged out successfully"
-    assert "session=\"\"" in response.headers["set-cookie"]
+    assert 'session=""' in response.headers["set-cookie"]
     logout.assert_awaited_once_with(session_id)
 
 

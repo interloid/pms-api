@@ -4,7 +4,6 @@ from httpx import ASGITransport, AsyncClient
 
 
 class ApiClient:
-    
     def __init__(self, app):
         self.app = app
 

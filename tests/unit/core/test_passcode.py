@@ -198,7 +198,6 @@ async def test_increment_passcode_attempts():
     )
 
 
-
 @pytest.mark.asyncio
 async def test_reset_passcode_attempts():
     redis = MagicMock()

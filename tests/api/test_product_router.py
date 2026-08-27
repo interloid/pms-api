@@ -118,9 +118,7 @@ def test_list_products_passes_filters_and_returns_pagination(client, product):
         calculate_total_pages=MagicMock(return_value=1),
     )
     with service_patch:
-        response = client.get(
-            "/products?search=key&status=active&page=1&page_size=5"
-        )
+        response = client.get("/products?search=key&status=active&page=1&page_size=5")
 
     assert response.status_code == 200, response.text
     assert response.json()["pagination"] == {

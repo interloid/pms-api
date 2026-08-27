@@ -74,9 +74,7 @@ def test_set_primary_product_image_returns_updated_image(client, service):
     image = make_image(is_primary=True)
     service.set_primary_image = AsyncMock(return_value=image)
 
-    response = client.patch(
-        f"/products/{product_id}/images/{image_id}/primary"
-    )
+    response = client.patch(f"/products/{product_id}/images/{image_id}/primary")
 
     assert response.status_code == 200
     assert response.json()["is_primary"] is True

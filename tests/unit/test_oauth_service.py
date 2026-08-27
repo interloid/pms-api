@@ -1,8 +1,8 @@
 from unittest.mock import AsyncMock, MagicMock
-from  redis.asyncio import Redis
 from uuid import uuid4
 
 import pytest
+from redis.asyncio import Redis
 
 from app.exceptions.custom import (
     ConflictException,
@@ -14,6 +14,7 @@ from app.models.user_identity_model import UserIdentity
 from app.models.user_model import User
 from app.services.auth_service import AuthService
 from app.utils.helpers import utc_now
+
 
 @pytest.fixture
 def auth_service(db, redis):
