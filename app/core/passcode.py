@@ -59,6 +59,14 @@ async def get_passcode_attempts(redis: Redis, email: str) -> int:
     return int(attempts)
 
 
+async def get_passcode_attempt_ttl(redis: Redis, email: str) -> int:
+
+    key = get_passcode_attempt_key(email)
+    ttl = await redis.ttl(key)
+
+    return max(ttl, 0)
+
+
 async def increment_passcode_attempts(redis: Redis, email: str) -> int:
 
     key = get_passcode_attempt_key(email)

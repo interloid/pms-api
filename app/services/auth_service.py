@@ -15,6 +15,7 @@ from app.core.passcode import (
     delete_passcode,
     generate_passcode,
     get_passcode,
+    get_passcode_attempt_ttl,
     get_passcode_attempts,
     increment_passcode_attempts,
     reset_passcode_attempts,
@@ -30,6 +31,7 @@ from app.exceptions.custom import (
     ConflictException,
     NotFoundException,
     UnauthorizedException,
+    TooManyRequestsException,
 )
 from app.models.session_model import Session
 from app.models.user_identity_model import UserIdentity
@@ -281,13 +283,24 @@ class AuthService:
             )
 
             if attempts >= settings.PASSCODE_MAX_ATTEMPTS:
+                retry_after_seconds = await get_passcode_attempt_ttl(
+                    redis=redis,
+                    email=email,
+                )
+
                 logger.warning(
                     "Passcode verification attempts exceeded | email=%s",
                     email,
                 )
 
-                raise UnauthorizedException(
+                raise TooManyRequestsException(
                     message="Too many attempts. Request a new passcode.",
+                    details={
+                        "attempts_used": attempts,
+                        "max_attempts": settings.PASSCODE_MAX_ATTEMPTS,
+                        "remaining_attempts": 0,
+                        "retry_after_seconds": retry_after_seconds,
+                    },
                 )
 
             stored_hash = await get_passcode(
@@ -305,13 +318,41 @@ class AuthService:
                 passcode,
                 stored_hash,
             ):
-                await increment_passcode_attempts(
+                attempts = await increment_passcode_attempts(
                     redis=redis,
                     email=email,
                 )
+
+                remaining_attempts = max(
+                    settings.PASSCODE_MAX_ATTEMPTS - attempts,
+                    0,
+                )
+                retry_after_seconds = await get_passcode_attempt_ttl(
+                    redis=redis,
+                    email=email,
+                )
+
+                details = {
+                    "attempts_used": attempts,
+                    "max_attempts": settings.PASSCODE_MAX_ATTEMPTS,
+                    "remaining_attempts": remaining_attempts,
+                    "retry_after_seconds": retry_after_seconds,
+                }
+
+                if attempts >= settings.PASSCODE_MAX_ATTEMPTS:
+                    logger.warning(
+                        "Passcode verification attempts exceeded | email=%s",
+                        email,
+                    )
+                    raise TooManyRequestsException(
+                        message="Too many attempts. Request a new passcode.",
+                        details=details,
+                    )
+
                 logger.warning("Invalid or expired passcode")
                 raise UnauthorizedException(
                     message="Invalid or expired passcode.",
+                    details=details,
                 )
 
             await delete_passcode(

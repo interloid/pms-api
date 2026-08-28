@@ -7,6 +7,7 @@ from app.core.passcode import (
     generate_passcode,
     get_passcode,
     get_passcode_attempt_key,
+    get_passcode_attempt_ttl,
     get_passcode_attempts,
     get_passcode_key,
     increment_passcode_attempts,
@@ -195,6 +196,22 @@ async def test_increment_passcode_attempts():
     redis.expire.assert_awaited_once_with(
         "auth:passcode:attempts:user@example.com",
         settings.PASSCODE_EXPIRE_SECONDS,
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_passcode_attempt_ttl():
+    redis = MagicMock()
+    redis.ttl = AsyncMock(return_value=240)
+
+    result = await get_passcode_attempt_ttl(
+        redis=redis,
+        email="user@example.com",
+    )
+
+    assert result == 240
+    redis.ttl.assert_awaited_once_with(
+        "auth:passcode:attempts:user@example.com",
     )
 
 

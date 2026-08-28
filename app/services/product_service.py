@@ -329,9 +329,6 @@ class ProductService(BaseService[Product]):
         primary_image_id: UUID | None = None,
     ) -> Product:
 
-        if images:
-            await self._validate_product_images(images)
-
         product = await self.product_repo.get_by_id(
             product_id=product_id,
         )
@@ -340,6 +337,36 @@ class ProductService(BaseService[Product]):
             logger.warning("product not found | product_id=%s", product_id)
             raise NotFoundException(
                 message="Product not found",
+            )
+
+        await self._validate_product_images(images)
+
+        removed_image_id_set = set(removed_image_ids or [])
+        current_image_ids = {image.id for image in product.images}
+        unknown_image_ids = removed_image_id_set - current_image_ids
+
+        if unknown_image_ids:
+            logger.warning(
+                "Product image not found during update | product_id=%s | image_ids=%s",
+                product_id,
+                unknown_image_ids,
+            )
+            raise NotFoundException(message="Product image not found")
+
+        resulting_image_count = (
+            len(product.images) - len(removed_image_id_set) + len(images)
+        )
+
+        if resulting_image_count > ProductImageConstants.MAX_IMAGES:
+            logger.warning(
+                "Product image limit exceeded | product_id=%s | image_count=%s",
+                product_id,
+                resulting_image_count,
+            )
+            raise BadRequestException(
+                message=(
+                    f"Maximum {ProductImageConstants.MAX_IMAGES} images are allowed"
+                ),
             )
 
         updates = payload.model_dump(exclude_unset=True)
@@ -417,7 +444,7 @@ class ProductService(BaseService[Product]):
             if product is None:
                 raise NotFoundException(message="Product not found")
 
-            await self.db.refresh(product, ["images"])
+            await self.db.refresh(product, ["images", "category"])
 
             await self._cleanup_s3(images_to_delete)
 

@@ -143,7 +143,7 @@ def test_get_product_returns_requested_product(client, product):
     service.get_product.assert_awaited_once_with(product_id=product.id)
 
 
-def test_update_product_rejects_omitted_non_nullable_fields(client, product):
+def test_update_product_accepts_partial_update(client, product):
     service_patch, service = mock_product_service(
         update_product=AsyncMock(return_value=product),
     )
@@ -156,8 +156,11 @@ def test_update_product_rejects_omitted_non_nullable_fields(client, product):
             files={"images": ("image.png", b"image-data", "image/png")},
         )
 
-    assert response.status_code == 422
-    service.update_product.assert_not_awaited()
+    assert response.status_code == 200
+    assert service.update_product.await_args.kwargs["payload"].name == (
+        "Updated keyboard"
+    )
+    assert len(service.update_product.await_args.kwargs["images"]) == 1
 
 
 def test_update_product_parses_image_ids_and_updates_product(client, product):
@@ -189,6 +192,9 @@ def test_update_product_parses_image_ids_and_updates_product(client, product):
     assert service.update_product.await_args.kwargs["primary_image_id"] == (
         primary_image_id
     )
+    uploaded_images = service.update_product.await_args.kwargs["images"]
+    assert len(uploaded_images) == 1
+    assert uploaded_images[0].filename == "image.png"
 
 
 def test_update_product_rejects_non_list_removed_image_ids(client, product):

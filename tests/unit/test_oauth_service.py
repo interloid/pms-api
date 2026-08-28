@@ -4,9 +4,11 @@ from uuid import uuid4
 import pytest
 from redis.asyncio import Redis
 
+from app.core.settings import settings
 from app.exceptions.custom import (
     ConflictException,
     NotFoundException,
+    TooManyRequestsException,
     UnauthorizedException,
 )
 from app.models.session_model import Session
@@ -250,17 +252,27 @@ async def test_verify_email_passcode_rejects_too_many_attempts(
         "app.services.auth_service.get_passcode_attempts",
         AsyncMock(return_value=5),
     )
+    monkeypatch.setattr(
+        "app.services.auth_service.get_passcode_attempt_ttl",
+        AsyncMock(return_value=240),
+    )
 
     with pytest.raises(
-        UnauthorizedException,
+        TooManyRequestsException,
         match="Too many attempts. Request a new passcode.",
-    ):
+    ) as exc_info:
         await service.verify_email_passcode(
             email=user.email,
             passcode="123456",
             redis=MagicMock(),
         )
 
+    assert exc_info.value.details == {
+        "attempts_used": 5,
+        "max_attempts": settings.PASSCODE_MAX_ATTEMPTS,
+        "remaining_attempts": 0,
+        "retry_after_seconds": 240,
+    }
     db.rollback.assert_awaited_once()
 
 
@@ -308,7 +320,7 @@ async def test_verify_email_passcode_rejects_invalid_passcode(
     service.user_repo.get_by_email.return_value = user
 
     get_attempts = AsyncMock(return_value=0)
-    increment_attempts = AsyncMock()
+    increment_attempts = AsyncMock(return_value=1)
 
     monkeypatch.setattr(
         "app.services.auth_service.get_passcode_attempts",
@@ -329,17 +341,27 @@ async def test_verify_email_passcode_rejects_invalid_passcode(
         "app.services.auth_service.increment_passcode_attempts",
         increment_attempts,
     )
+    monkeypatch.setattr(
+        "app.services.auth_service.get_passcode_attempt_ttl",
+        AsyncMock(return_value=299),
+    )
 
     with pytest.raises(
         UnauthorizedException,
         match="Invalid or expired passcode.",
-    ):
+    ) as exc_info:
         await service.verify_email_passcode(
             email=user.email,
             passcode="wrong",
             redis=MagicMock(),
         )
 
+    assert exc_info.value.details == {
+        "attempts_used": 1,
+        "max_attempts": settings.PASSCODE_MAX_ATTEMPTS,
+        "remaining_attempts": 2,
+        "retry_after_seconds": 299,
+    }
     increment_attempts.assert_awaited_once()
 
     db.rollback.assert_awaited_once()

@@ -13,8 +13,8 @@ from app.core.constants import (
     ProductStatusEnum,
 )
 from app.db.session import get_db
-from app.exceptions.global_exception import CRUD_ERROR_RESPONSES
 from app.exceptions.custom import BadRequestException
+from app.exceptions.global_exception import CRUD_ERROR_RESPONSES
 from app.models.product_model import Product
 from app.schemas.product_image_schema import ProductImageResponse
 from app.schemas.product_schema import (
@@ -256,7 +256,7 @@ async def update_product(
     description: Annotated[str | None, Form()] = None,
     removed_image_ids: Annotated[str | None, Form()] = None,
     primary_image_id: Annotated[UUID | None, Form()] = None,
-    images: Annotated[list[UploadFile | str] | None, File()] = None,
+    images: Annotated[list[UploadFile] | None, File()] = None,
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ProductResponse]:
 
@@ -264,15 +264,6 @@ async def update_product(
         parsed_removed_image_ids = parse_removed_image_ids(
             removed_image_ids,
         )
-        normalized_images: list[UploadFile] = []
-
-        if images:
-            normalized_images = [
-                image
-                for image in images
-                if isinstance(image, UploadFile)
-            ]
-        
         if (
             primary_image_id is not None
             and parsed_removed_image_ids
@@ -305,7 +296,7 @@ async def update_product(
         product = await product_service.update_product(
             product_id=id,
             payload=payload,
-            images=normalized_images,
+            images=images or [],
             removed_image_ids=parsed_removed_image_ids,
             primary_image_id=primary_image_id,
         )

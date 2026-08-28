@@ -4,8 +4,14 @@ from uuid import uuid4
 
 import pytest
 
-from app.exceptions.custom import ConflictException, NotFoundException
+from app.core.constants import ProductImageConstants
+from app.exceptions.custom import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.models.category_model import Category
+from app.models.product_image_model import ProductImage
 from app.models.product_model import Product
 from app.schemas.product_schema import ProductUpdate
 from app.services.product_service import ProductService
@@ -187,6 +193,38 @@ async def test_update_product_updates_product():
     )
 
     assert service.product_repo.get_by_id.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_update_product_rejects_total_images_above_limit():
+    db = MagicMock()
+    service = ProductService(db)
+    product_id = uuid4()
+    product = Product(
+        id=product_id,
+        name="iPhone 15",
+        sku="IPHONE-15",
+    )
+    product.images = [
+        ProductImage(id=uuid4(), product_id=product_id)
+        for _ in range(ProductImageConstants.MAX_IMAGES)
+    ]
+    new_image = MagicMock()
+    new_image.filename = "new.png"
+    new_image.content_type = "image/png"
+    new_image.size = 100
+
+    service.product_repo.get_by_id = AsyncMock(return_value=product)
+    service.product_repo.update = AsyncMock()
+
+    with pytest.raises(BadRequestException, match="Maximum 6 images are allowed"):
+        await service.update_product(
+            product_id=product_id,
+            payload=ProductUpdate(name="Updated product"),
+            images=[new_image],
+        )
+
+    service.product_repo.update.assert_not_awaited()
 
 
 # SKU conflict
