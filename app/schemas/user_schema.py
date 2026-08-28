@@ -18,12 +18,3 @@ class UserResponse(UserBase):
     first_name: str
     last_name: str
     is_active: bool
-
-
-# class UserUpdate(BaseSchema):
-#     name: str | None = Field(
-#         default=None,
-#         min_length=3,
-#         max_length=50,
-#     )
-#     email: EmailStr | None = None

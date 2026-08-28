@@ -2,13 +2,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, UploadFile, status
 
-from app.api.dependencies import get_product_image_service
+from app.api.dependencies import get_current_user, get_product_image_service
 from app.schemas.product_image_schema import ProductImageResponse
 from app.services.product_image_service import ProductImageService
 
 router = APIRouter(
     prefix="/products/{product_id}/images",
     tags=["Product Images"],
+    dependencies=[Depends(get_current_user)],
 )
 
 

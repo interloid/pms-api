@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, Response
+from fastapi import APIRouter, Cookie, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,9 +36,10 @@ router = APIRouter(
 async def login(
     login_data: LoginRequest,
     response: Response,
+    redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
-    service = AuthService(db)
+    service = AuthService(db=db, redis=redis)
 
     result = await service.login(login_data)
 
@@ -47,12 +48,19 @@ async def login(
             message="Login response data is missing",
         )
 
+    if login_data.remember_me:
+        max_age = settings.REMEMBER_ME_EXPIRE_DAYS * 24 * 60 * 60
+    else:
+        max_age = settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60
+
     response.set_cookie(
         key="session",
         value=str(result.data.session_id),
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="none",
+        path="/",
+        max_age=max_age,
     )
 
     return result
@@ -61,25 +69,34 @@ async def login(
 @router.post("/logout")
 async def logout(
     response: Response,
-    session_id: UUID | None = Cookie(
+    session_id: str | None = Cookie(
         default=None,
         alias="session",
     ),
+    redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
     if session_id is not None:
-        service = AuthService(db)
-        result = await service.logout(session_id)
-    else:
-        result = {
-            "message": "Logged out successfully",
-        }
+        try:
+            parsed_session_id = UUID(session_id)
+        except ValueError:
+            parsed_session_id = None
+
+        if parsed_session_id is not None:
+            service = AuthService(db=db, redis=redis)
+            await service.logout(parsed_session_id)
 
     response.delete_cookie(
         key="session",
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="none",
     )
 
-    return result
+    return ApiResponse(
+        message="Logged out successfully",
+    )
 
 
 @router.get("/session")
@@ -88,6 +105,7 @@ async def session(
         default=None,
         alias="session",
     ),
+    redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
     if session is None:
@@ -102,21 +120,23 @@ async def session(
             message="Invalid session",
         ) from exc
 
-    service = AuthService(db)
+    service = AuthService(db=db, redis=redis)
 
     return await service.get_current_session(session_id)
 
 
 @router.post("/passcode/request")
 async def request_passcode(
+    request: Request,
     login_data: PasscodeRequest,
     redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
-    service = AuthService(db)
+    service = AuthService(db=db, redis=redis)
 
     await service.request_passcode(
         email=login_data.email,
+        client_ip=request.client.host or "unknown",
         redis=redis,
     )
 
@@ -128,16 +148,34 @@ async def request_passcode(
 @router.post("/passcode/verify")
 async def verify_passcode(
     login_data: PasscodeVerifyRequest,
+    response: Response,
     redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ):
-    service = AuthService(db)
+    service = AuthService(db=db, redis=redis)
 
-    return await service.verify_email_passcode(
+    result = await service.verify_email_passcode(
         email=login_data.email,
         passcode=login_data.passcode,
         redis=redis,
     )
+
+    if result.data is None:
+        raise InternalServerException(
+            message="Login response data is missing",
+        )
+
+    response.set_cookie(
+        key="session",
+        value=str(result.data.session_id),
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+        max_age=settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60,
+    )
+
+    return result
 
 
 @router.get(
@@ -198,10 +236,12 @@ async def omniauth_callback(
 
     response.set_cookie(
         key="session",
-        value=session_id,
+        value=str(session_id),
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
+        path="/",
+        max_age=settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60,
     )
 
     return response

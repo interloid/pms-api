@@ -14,6 +14,7 @@ class PasscodeLoginRequest(BaseSchema):
 class LoginRequest(BaseSchema):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    remember_me: bool = False
 
 
 class PasscodeRequest(BaseSchema):

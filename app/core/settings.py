@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
 
     SESSION_EXPIRE_DAYS: int = 7
+    REMEMBER_ME_EXPIRE_DAYS: int = 30
 
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
@@ -41,15 +42,20 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str
     SMTP_FROM_EMAIL: str
     SMTP_FROM_NAME: str = "Product Management System"
-    SMTP_USE_TLS: bool = False
+    SMTP_START_TLS: bool = True
+
+    PASSCODE_PEPPER: str
 
     PASSCODE_EXPIRE_SECONDS: int = 300
     PASSCODE_LENGTH: int = 6
     PASSCODE_MAX_ATTEMPTS: int = 3
 
-    CORS_ORIGINS: str = "http://localhost:5173"
+    PASSCODE_REQUEST_EMAIL_LIMIT: int = 3
+    PASSCODE_REQUEST_IP_LIMIT: int = 10
+    PASSCODE_REQUEST_WINDOW_SECONDS: int = 900
 
-    YOUR_REACT_URL: str = "http://localhost:5173/callback"
+    CORS_ORIGINS: str
+    YOUR_REACT_URL: str
 
     model_config = SettingsConfigDict(
         env_file=".env",

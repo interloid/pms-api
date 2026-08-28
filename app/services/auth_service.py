@@ -11,12 +11,14 @@ from app.core.oauth.client import get_oauth_client
 from app.core.oauth.config import OAUTH_PROVIDERS
 from app.core.oauth.state import generate_oauth_state
 from app.core.passcode import (
+    check_passcode_request_limit,
     delete_passcode,
-    delete_passcode_attempts,
     generate_passcode,
     get_passcode,
+    get_passcode_attempt_ttl,
     get_passcode_attempts,
     increment_passcode_attempts,
+    reset_passcode_attempts,
     store_passcode,
 )
 from app.core.security import (
@@ -26,8 +28,10 @@ from app.core.security import (
 from app.core.settings import settings
 from app.exceptions.custom import (
     AppException,
+    ConflictException,
     NotFoundException,
     UnauthorizedException,
+    TooManyRequestsException,
 )
 from app.models.session_model import Session
 from app.models.user_identity_model import UserIdentity
@@ -51,7 +55,7 @@ logger = get_logger(__name__)
 
 
 class AuthService:
-    def __init__(self, db: AsyncSession, redis: Redis | None = None):
+    def __init__(self, db: AsyncSession, redis: Redis):
         self.db = db
         self.user_repo = UserRepository(db)
         self.session_repo = SessionRepository(db)
@@ -81,12 +85,16 @@ class AuthService:
                 logger.warning("Invalid email or password | email=%s", login_data.email)
                 raise UnauthorizedException(message="Invalid email or password")
 
+            now = utc_now()
+
             session = Session(
                 user_id=user.id,
-                expires_at=utc_now() + timedelta(days=settings.SESSION_EXPIRE_DAYS),
+                expires_at=now + timedelta(days=settings.SESSION_EXPIRE_DAYS),
+                remember_me=login_data.remember_me,
             )
 
             await self.session_repo.create(session)
+            logger.info("User created Successfully | user_id=%s", user.id)
 
             await self.db.commit()
 
@@ -149,40 +157,52 @@ class AuthService:
 
     async def get_current_session(self, session_id: UUID):
 
-        try:
-            session = await self.session_repo.get_active_by_id(
-                session_id, now=utc_now()
+        now = utc_now()
+
+        session = await self.session_repo.get_active_by_id(
+            session_id,
+            now=now,
+        )
+
+        if session is None:
+            logger.warning(
+                "Invalid or expired session | session_id=%s",
+                session_id,
+            )
+            raise UnauthorizedException(message="Invalid or expired session")
+
+        user = await self.user_repo.get_by_id(session.user_id)
+
+        if user is None:
+            logger.warning(
+                "User not found for session | session_id=%s",
+                session_id,
+            )
+            raise UnauthorizedException(message="Invalid session")
+
+        if not user.is_active:
+            logger.warning(
+                "Inactive user | user_id=%s",
+                user.id,
+            )
+            raise UnauthorizedException(message="Invalid session")
+
+        if session.remember_me:
+            absolute_expiration = session.created_at + timedelta(
+                days=settings.REMEMBER_ME_EXPIRE_DAYS
             )
 
-            if session is None:
-                logger.warning(
-                    "Invalid or expired session | session_id=%s",
-                    session_id,
+            renew_threshold = timedelta(days=1)
+
+            if session.expires_at - now <= renew_threshold:
+                new_expiration = min(
+                    now + timedelta(days=settings.SESSION_EXPIRE_DAYS),
+                    absolute_expiration,
                 )
-                raise UnauthorizedException(message="Invalid or expired session")
 
-            user = await self.user_repo.get_by_id(session.user_id)
-
-            if user is None:
-                logger.warning(
-                    "User not found for session | session_id=%s",
-                    session_id,
-                )
-                raise UnauthorizedException(message="Invalid session")
-
-            if not user.is_active:
-                logger.warning(
-                    "Inactive user | user_id=%s",
-                    user.id,
-                )
-                raise UnauthorizedException(message="Invalid session")
-
-            # return user
-
-        except Exception:
-            # await self._rollback()
-            logger.exception("Unexpected error")
-            raise
+                if new_expiration > session.expires_at:
+                    session.expires_at = new_expiration
+                    await self.db.commit()
 
         return ApiResponse[LoginResponse](
             message="Session retrieved successfully",
@@ -202,19 +222,24 @@ class AuthService:
         self,
         *,
         email: str,
+        client_ip: str,
         redis: Redis,
     ) -> None:
+
+        email = email.strip().lower()
 
         user = await self.user_repo.get_by_email(email)
 
         if user is not None and not user.is_active:
+            logger.warning("Invalid email passcode verification attempt")
             raise UnauthorizedException(
-                message="Invalid or expired passcode.",
+                message="Invalid email passcode verification attempt.",
             )
 
-        await delete_passcode_attempts(
+        await check_passcode_request_limit(
             redis=redis,
             email=email,
+            client_ip=client_ip,
         )
 
         passcode = generate_passcode()
@@ -241,9 +266,11 @@ class AuthService:
     ) -> ApiResponse[LoginResponse]:
 
         try:
+            email = email.strip().lower()
+
             user = await self.user_repo.get_by_email(email)
 
-            if user is not None or not user.is_active:
+            if user is not None and not user.is_active:
                 logger.warning("Invalid email passcode verification attempt")
 
                 raise UnauthorizedException(
@@ -256,13 +283,24 @@ class AuthService:
             )
 
             if attempts >= settings.PASSCODE_MAX_ATTEMPTS:
+                retry_after_seconds = await get_passcode_attempt_ttl(
+                    redis=redis,
+                    email=email,
+                )
+
                 logger.warning(
                     "Passcode verification attempts exceeded | email=%s",
                     email,
                 )
 
-                raise UnauthorizedException(
+                raise TooManyRequestsException(
                     message="Too many attempts. Request a new passcode.",
+                    details={
+                        "attempts_used": attempts,
+                        "max_attempts": settings.PASSCODE_MAX_ATTEMPTS,
+                        "remaining_attempts": 0,
+                        "retry_after_seconds": retry_after_seconds,
+                    },
                 )
 
             stored_hash = await get_passcode(
@@ -271,6 +309,7 @@ class AuthService:
             )
 
             if stored_hash is None:
+                logger.warning("Invalid or expired passcode")
                 raise UnauthorizedException(
                     message="Invalid or expired passcode.",
                 )
@@ -279,13 +318,41 @@ class AuthService:
                 passcode,
                 stored_hash,
             ):
-                await increment_passcode_attempts(
+                attempts = await increment_passcode_attempts(
                     redis=redis,
                     email=email,
                 )
 
+                remaining_attempts = max(
+                    settings.PASSCODE_MAX_ATTEMPTS - attempts,
+                    0,
+                )
+                retry_after_seconds = await get_passcode_attempt_ttl(
+                    redis=redis,
+                    email=email,
+                )
+
+                details = {
+                    "attempts_used": attempts,
+                    "max_attempts": settings.PASSCODE_MAX_ATTEMPTS,
+                    "remaining_attempts": remaining_attempts,
+                    "retry_after_seconds": retry_after_seconds,
+                }
+
+                if attempts >= settings.PASSCODE_MAX_ATTEMPTS:
+                    logger.warning(
+                        "Passcode verification attempts exceeded | email=%s",
+                        email,
+                    )
+                    raise TooManyRequestsException(
+                        message="Too many attempts. Request a new passcode.",
+                        details=details,
+                    )
+
+                logger.warning("Invalid or expired passcode")
                 raise UnauthorizedException(
                     message="Invalid or expired passcode.",
+                    details=details,
                 )
 
             await delete_passcode(
@@ -293,10 +360,20 @@ class AuthService:
                 email=email,
             )
 
-            await delete_passcode_attempts(
+            await reset_passcode_attempts(
                 redis=redis,
                 email=email,
             )
+            if user is None:
+                user = User(
+                    email=email,
+                    first_name="User",
+                    last_name="",
+                    is_active=True,
+                )
+
+                await self.user_repo.create(user)
+            logger.info("User created Successfully | email=%s", email)
 
             session = Session(
                 user_id=user.id,
@@ -425,6 +502,7 @@ class AuthService:
             config = OAUTH_PROVIDERS.get(provider)
 
             if config is None:
+                logger.warning("OAuth provider not supported | provider=%s", provider)
                 raise NotFoundException(
                     message="OAuth provider not supported",
                 )
@@ -458,8 +536,6 @@ class AuthService:
 
             userinfo = userinfo_response.json()
 
-            userinfo_response.raise_for_status()
-
             if provider == "github":
                 provider_user_id = str(userinfo["id"])
 
@@ -477,11 +553,15 @@ class AuthService:
                 email = userinfo.get("email")
 
                 if not email:
+                    logger.warning(
+                        "Google account does not provide email | email=%s", email
+                    )
                     raise UnauthorizedException(
                         message="Google account does not provide an email",
                     )
 
                 if userinfo.get("email_verified") is not True:
+                    logger.warning("Google email is not verified | email=%s", email)
                     raise UnauthorizedException(
                         message="Google email is not verified",
                     )
@@ -492,9 +572,12 @@ class AuthService:
             elif provider == "microsoft":
                 provider_user_id = userinfo["sub"]
 
-                email = userinfo.get("email") or userinfo.get("preferred_username")
+                email = userinfo.get("email")
 
                 if not email:
+                    logger.warning(
+                        "Microsoft account does not provide an email| email=%s", email
+                    )
                     raise UnauthorizedException(
                         message="Microsoft account does not provide an email",
                     )
@@ -506,6 +589,7 @@ class AuthService:
                 last_name = name_parts[1] if len(name_parts) > 1 else ""
 
             else:
+                logger.warning("OAuth provider not supported")
                 raise NotFoundException(
                     message="OAuth provider not supported",
                 )
@@ -519,6 +603,9 @@ class AuthService:
                 user = await self.user_repo.get_by_id(identity.user_id)
 
                 if user is None:
+                    logger.warning(
+                        "User associated with OAuth identity not found| user=%s", user
+                    )
                     raise NotFoundException(
                         message="User associated with OAuth identity not found",
                     )
@@ -526,14 +613,24 @@ class AuthService:
             else:
                 user = await self.user_repo.get_by_email(email)
 
-                if user is None:
-                    user = User(
-                        email=email,
-                        first_name=first_name,
-                        last_name=last_name,
+                if user is not None:
+                    logger.warning(
+                        "An account with this email already exists| user=%s", user
+                    )
+                    raise ConflictException(
+                        message=(
+                            "An account with this email already exists. "
+                            "Kindly sign in with the existing account."
+                        ),
                     )
 
-                    user = await self.user_repo.create(user)
+                user = User(
+                    email=email,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+
+                user = await self.user_repo.create(user)
 
                 identity = UserIdentity(
                     user_id=user.id,
@@ -543,6 +640,10 @@ class AuthService:
                 )
 
                 await self.user_identity_repo.create(identity)
+
+            if not user.is_active:
+                logger.warning("User account is inactive| user=%s", user)
+                raise UnauthorizedException(message="User account is inactive")
 
             logger.info(
                 "OAuth user info | provider=%s provider_user_id=%s email=%s",
@@ -581,38 +682,6 @@ class AuthService:
 
             raise
 
-    # async def get_google_user_info(
-    #     self,
-    #     access_token: str,
-    # ) -> dict[str, Any]:
-
-    #     try:
-    #         client = get_oauth_client()
-
-    #         response = await client.get(
-    #             "https://openidconnect.googleapis.com/v1/userinfo",
-    #             token={
-    #                 "access_token": access_token,
-    #                 "token_type": "Bearer",
-    #             },
-    #         )
-
-    #         response.raise_for_status()
-
-    #         user_info = response.json()
-
-    #         logger.info(
-    #             "Google user information retrieved successfully",
-    #         )
-
-    #         return user_info
-
-    #     except Exception:
-    #         logger.exception(
-    #             "Failed to retrieve Google user information",
-    #         )
-    #         raise
-
     async def get_github_email(self, client: AsyncOAuth2Client) -> str:
         response = await client.get(
             "https://api.github.com/user/emails",
@@ -632,6 +701,8 @@ class AuthService:
         for email_data in emails:
             if email_data.get("verified"):
                 return email_data["email"]
+
+        logger.warning("No verified email found for GitHub account | emails=%s", emails)
 
         raise UnauthorizedException(
             message="No verified email found for GitHub account",

@@ -12,7 +12,7 @@ from app.repositories.product_image_repo import ProductImageRepository
 from app.services.auth_service import AuthService
 from app.services.product_image_service import ProductImageService
 
-SESSION_COOKIE_NAME = "session_id"
+SESSION_COOKIE_NAME = "session"
 
 
 async def get_current_user(

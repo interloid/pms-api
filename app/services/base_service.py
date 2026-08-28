@@ -8,7 +8,10 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import PaginationEnum
+from app.core.logging import get_logger
 from app.exceptions.custom import BadRequestException
+
+logger = get_logger(__name__)
 
 
 class BaseService[T]:
@@ -22,16 +25,26 @@ class BaseService[T]:
     def validate_pagination(*, page: int, page_size: int) -> None:
 
         if page < PaginationEnum.DEFAULT_PAGE:
+            logger.warning(
+                "Page must be greater than or equal to 1 | page_size=%s", page_size
+            )
             raise BadRequestException(
                 message="Page must be greater than or equal to 1",
             )
 
         if page_size < 1:
+            logger.warning(
+                "Page must be greater than or equal to 1 | page_size=%s", page_size
+            )
             raise BadRequestException(
                 message="Page size must be greater than or equal to 1",
             )
 
         if page_size > PaginationEnum.MAX_PAGE_SIZE:
+            logger.warning(
+                "Page size must be less than or equal to MAX_PAGE_SIZE | page_size=%s",
+                page_size,
+            )
             raise BadRequestException(
                 message=(
                     "Page size must be less than or equal to "
@@ -56,6 +69,9 @@ class BaseService[T]:
         normalized_order = sort_order.strip().lower()
 
         if normalized_order not in {"asc", "desc"}:
+            logger.warning(
+                "Sort order must be either 'asc' or 'desc' | sort_order=%s", sort_order
+            )
             raise BadRequestException(
                 message="Sort order must be either 'asc' or 'desc'",
             )
@@ -78,6 +94,7 @@ class BaseService[T]:
             sort_column = sort_fields.get(default_sort)
 
         if sort_column is None:
+            logger.warning("Invalid sort field | sort_fields=%s", sort_fields)
             raise BadRequestException(message="Invalid sort field")
 
         return sort_column

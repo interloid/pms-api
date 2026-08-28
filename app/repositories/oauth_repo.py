@@ -23,12 +23,10 @@ class OAuthStateRepository:
 
         key = f"oauth:state:{state}"
 
-        provider = await self.redis.get(key)
+        provider = await self.redis.getdel(key)
 
         if provider is None:
             return None
-
-        await self.redis.delete(key)
 
         if isinstance(provider, bytes):
             return provider.decode()
