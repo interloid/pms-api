@@ -41,26 +41,21 @@ async def login(
 ):
     service = AuthService(db=db, redis=redis)
 
-    result = await service.login(login_data)
+    (result,raw_refresh_token,refresh_max_age) = await service.login(login_data)
 
     if result.data is None:
         raise InternalServerException(
             message="Login response data is missing",
         )
 
-    if login_data.remember_me:
-        max_age = settings.REMEMBER_ME_EXPIRE_DAYS * 24 * 60 * 60
-    else:
-        max_age = settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60
-
     response.set_cookie(
-        key="session",
-        value=str(result.data.session_id),
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
+        value=raw_refresh_token,
         httponly=True,
         secure=True,
         samesite="none",
         path="/",
-        max_age=max_age,
+        max_age=refresh_max_age,
     )
 
     return result

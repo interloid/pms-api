@@ -11,7 +11,7 @@ from app.exceptions.custom import (
     TooManyRequestsException,
     UnauthorizedException,
 )
-from app.models.session_model import Session
+from app.models.refresh_token_model import Session
 from app.models.user_identity_model import UserIdentity
 from app.models.user_model import User
 from app.services.auth_service import AuthService

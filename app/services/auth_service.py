@@ -1,6 +1,6 @@
 from datetime import timedelta
 from urllib.parse import urlencode
-from uuid import UUID
+from uuid import UUID,uuid4
 
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from redis.asyncio import Redis
@@ -22,8 +22,13 @@ from app.core.passcode import (
     store_passcode,
 )
 from app.core.security import (
+    create_access_token,
+    create_refresh_token,
     verify_passcode,
     verify_password,
+    decode_token,
+    hash_refresh_token,
+    validate_access_token_payload,
 )
 from app.core.settings import settings
 from app.exceptions.custom import (
@@ -33,12 +38,12 @@ from app.exceptions.custom import (
     UnauthorizedException,
     TooManyRequestsException,
 )
-from app.models.session_model import Session
+from app.models.refresh_token_model import RefreshToken
 from app.models.user_identity_model import UserIdentity
 from app.models.user_model import User
 from app.repositories import (
     OAuthStateRepository,
-    SessionRepository,
+    RefreshTokenRepository,
     UserIdentityRepository,
     UserRepository,
 )
@@ -58,14 +63,14 @@ class AuthService:
     def __init__(self, db: AsyncSession, redis: Redis):
         self.db = db
         self.user_repo = UserRepository(db)
-        self.session_repo = SessionRepository(db)
+        self.refresh_token_repo = RefreshTokenRepository(db)
         self.user_identity_repo = UserIdentityRepository(db)
         self.oauth_state_repo = OAuthStateRepository(redis)
 
     async def _rollback(self) -> None:
         await self.db.rollback()
 
-    async def login(self, login_data: LoginRequest) -> ApiResponse[LoginResponse]:
+    async def login(self, login_data: LoginRequest) -> tuple[ApiResponse[LoginResponse], str, int]:
 
         try:
             user = await self.user_repo.get_by_email(login_data.email)
@@ -85,18 +90,35 @@ class AuthService:
                 logger.warning("Invalid email or password | email=%s", login_data.email)
                 raise UnauthorizedException(message="Invalid email or password")
 
-            now = utc_now()
-
-            session = Session(
-                user_id=user.id,
-                expires_at=now + timedelta(days=settings.SESSION_EXPIRE_DAYS),
-                remember_me=login_data.remember_me,
+            
+            access_token = create_access_token({
+                "sub": str(user.id),
+            })
+            raw_refresh_token = create_refresh_token()
+            token_hash = hash_refresh_token(raw_refresh_token)
+            
+            expire_days = (
+                settings.REMEMBER_ME_EXPIRE_DAYS
+                if login_data.remember_me
+                else settings.REFRESH_TOKEN_EXPIRE_DAYS
             )
-
-            await self.session_repo.create(session)
+            
+            refresh_expires_at = (
+                utc_now()+timedelta(days=expire_days)
+            )
+            
+            refresh_token = RefreshToken(
+                user_id=user.id,
+                family_id=uuid4(),
+                token_hash=token_hash,
+                expires_at=refresh_expires_at,
+                is_revoked=False
+            )
+            
+            await self.refresh_token_repo.create(refresh_token)
+            
             logger.info("User created Successfully | user_id=%s", user.id)
 
-            await self.db.commit()
 
         except AppException:
             await self._rollback()
@@ -107,10 +129,12 @@ class AuthService:
             logger.exception("Unexpected error")
             raise
 
-        return ApiResponse[LoginResponse](
+        result =  ApiResponse[LoginResponse](
             message="Login successful",
             data=LoginResponse(
-                session_id=session.id,
+                access_token=access_token,
+                token_type="bearer",
+                expires_in=(settings.ACCESS_TOKEN_EXPIRE_MINUTES*60),
                 user=UserResponse(
                     id=user.id,
                     email=user.email,
@@ -120,6 +144,8 @@ class AuthService:
                 ),
             ),
         )
+        max_age = expire_days * 24 * 60 * 60
+        return result, raw_refresh_token, max_age
 
     async def logout(self, session_id: UUID):
 

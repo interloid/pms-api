@@ -8,7 +8,7 @@ from app.exceptions.custom import (
     ConflictException,
     UnauthorizedException,
 )
-from app.models.session_model import Session
+from app.models.refresh_token_model import Session
 from app.services.auth_service import AuthService
 
 

@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from pydantic import EmailStr, Field
@@ -5,7 +6,6 @@ from pydantic import EmailStr, Field
 from app.core.constants import OAuthProviderEnum
 from app.schemas.common import BaseSchema
 from app.schemas.user_schema import UserResponse
-
 
 class PasscodeLoginRequest(BaseSchema):
     passcode: str = Field(min_length=6, max_length=128)
@@ -22,7 +22,9 @@ class PasscodeRequest(BaseSchema):
 
 
 class LoginResponse(BaseSchema):
-    session_id: UUID
+    access_token: str
+    expires_in: int
+    token_type: Literal["bearer"] = "bearer"
     user: UserResponse
 
 
@@ -52,7 +54,7 @@ class OAuthUserInfo(BaseSchema):
     last_name: str | None = None
     email_verified: bool = False
 
-
-# class OAuthLoginResponse(BaseSchema):
-#     session_id: UUID
-#     user: UserResponse
+class AccessTokenPayload(BaseSchema):
+    sub: UUID
+    type: Literal["access"]
+    exp: int

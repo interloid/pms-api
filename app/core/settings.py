@@ -7,6 +7,13 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     DATABASE_URL: str
+    
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
+    REFRESH_TOKEN_COOKIE_NAME: str = "refresh_token"
 
     SESSION_EXPIRE_DAYS: int = 7
     REMEMBER_ME_EXPIRE_DAYS: int = 30
@@ -45,6 +52,7 @@ class Settings(BaseSettings):
     SMTP_START_TLS: bool = True
 
     PASSCODE_PEPPER: str
+    REFRESH_TOKEN_PEPPER: str
 
     PASSCODE_EXPIRE_SECONDS: int = 300
     PASSCODE_LENGTH: int = 6

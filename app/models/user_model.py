@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import BaseEntity
 
 if TYPE_CHECKING:
-    from app.models.session_model import Session
+    from app.models.refresh_token_model import RefreshToken
     from app.models.user_identity_model import UserIdentity
 
 
@@ -55,8 +55,8 @@ class User(BaseEntity):
         index=True,
     )
 
-    sessions: Mapped[list["Session"]] = relationship(
-        "Session",
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        "RefreshToken",
         back_populates="user",
         cascade="all, delete-orphan",
     )
