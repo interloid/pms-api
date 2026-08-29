@@ -1,47 +1,50 @@
-from uuid import UUID
+from fastapi import Depends, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from fastapi import Depends, Request
-from redis.asyncio import Redis
+from jwt import ExpiredSignatureError, InvalidTokenError
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.s3 import S3Service
-from app.db.redis import get_redis
 from app.db.session import get_db
+from app.core.security import decode_token, validate_access_token_payload
 from app.exceptions.custom import UnauthorizedException
 from app.repositories.product_image_repo import ProductImageRepository
-from app.services.auth_service import AuthService
 from app.services.product_image_service import ProductImageService
+from app.repositories.user_repo import UserRepository
 
-SESSION_COOKIE_NAME = "session"
+bearer_schema = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer_schema),
     db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
 ):
-    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+   
 
-    if not session_id:
-        raise UnauthorizedException(
-            message="Authentication required",
-        )
+    if credentials is None:
+        raise UnauthorizedException(message="Authentication required")
+    
+    if credentials.scheme.lower() != "bearer":
+        raise UnauthorizedException(message="Invalid authentication scheme")
 
     try:
-        session_uuid = UUID(session_id)
-    except ValueError:
-        raise UnauthorizedException(
-            message="Invalid session",
-        )
+        decode_payload = decode_token(credentials.credentials)
+        
+        token_payload = validate_access_token_payload(decode_payload)
+        
+    except ExpiredSignatureError as exc:
+        raise UnauthorizedException(message="Invalid access token") from exc
 
-    auth_service = AuthService(
-        db=db,
-        redis=redis,
-    )
+    except (ValidationError, ValueError, InvalidTokenError) as exc:
+        raise UnauthorizedException(message="Invalid access token") from exc
+    
+    user = await UserRepository(db).get_by_id(token_payload.sub)
+    
+    if user is None or not user.is_active:
+        raise UnauthorizedException(message="Invalid access token")
 
-    return await auth_service.get_current_session(
-        session_id=session_uuid,
-    )
+    return user
 
 
 async def get_product_image_service(

@@ -58,3 +58,9 @@ class AccessTokenPayload(BaseSchema):
     sub: UUID
     type: Literal["access"]
     exp: int
+
+class TokenResponse(BaseSchema):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int = Field(gt=0, description="Access token lifetime in seconds")
+    

@@ -1,6 +1,7 @@
 from datetime import timedelta
+from typing import NoReturn
 from urllib.parse import urlencode
-from uuid import UUID,uuid4
+from uuid import UUID, uuid4
 
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from redis.asyncio import Redis
@@ -24,19 +25,17 @@ from app.core.passcode import (
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    hash_refresh_token,
     verify_passcode,
     verify_password,
-    decode_token,
-    hash_refresh_token,
-    validate_access_token_payload,
 )
 from app.core.settings import settings
 from app.exceptions.custom import (
     AppException,
     ConflictException,
     NotFoundException,
-    UnauthorizedException,
     TooManyRequestsException,
+    UnauthorizedException,
 )
 from app.models.refresh_token_model import RefreshToken
 from app.models.user_identity_model import UserIdentity
@@ -50,6 +49,7 @@ from app.repositories import (
 from app.schemas.auth_schema import (
     LoginRequest,
     LoginResponse,
+    TokenResponse,
 )
 from app.schemas.response import ApiResponse
 from app.schemas.user_schema import UserResponse
@@ -70,7 +70,62 @@ class AuthService:
     async def _rollback(self) -> None:
         await self.db.rollback()
 
-    async def login(self, login_data: LoginRequest) -> tuple[ApiResponse[LoginResponse], str, int]:
+    async def _create_refresh_credential(
+        self,
+        *,
+        user: User,
+        expire_days: int,
+    ) -> tuple[str, int]:
+        raw_refresh_token = create_refresh_token()
+
+        refresh_token_record = RefreshToken(
+            user_id=user.id,
+            family_id=uuid4(),
+            token_hash=hash_refresh_token(raw_refresh_token),
+            expires_at=utc_now() + timedelta(days=expire_days),
+            is_revoked=False,
+        )
+
+        await self.refresh_token_repo.create(refresh_token_record)
+
+        refresh_max_age = expire_days * 24 * 60 * 60
+        return raw_refresh_token, refresh_max_age
+
+    async def _issue_token_pair(
+        self,
+        *,
+        user: User,
+        refresh_expire_days: int,
+    ) -> tuple[LoginResponse, str, int]:
+        access_token = create_access_token({"sub": str(user.id)})
+
+        (
+            raw_refresh_token,
+            refresh_max_age,
+        ) = await self._create_refresh_credential(
+            user=user,
+            expire_days=refresh_expire_days,
+        )
+
+        login_response = LoginResponse(
+            access_token=access_token,
+            token_type="bearer",
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            user=UserResponse(
+                id=user.id,
+                email=user.email,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                is_active=user.is_active,
+            ),
+        )
+
+        return login_response, raw_refresh_token, refresh_max_age
+
+    async def login(
+        self,
+        login_data: LoginRequest,
+    ) -> tuple[ApiResponse[LoginResponse], str, int]:
 
         try:
             user = await self.user_repo.get_by_email(login_data.email)
@@ -90,34 +145,20 @@ class AuthService:
                 logger.warning("Invalid email or password | email=%s", login_data.email)
                 raise UnauthorizedException(message="Invalid email or password")
 
-            
-            access_token = create_access_token({
-                "sub": str(user.id),
-            })
-            raw_refresh_token = create_refresh_token()
-            token_hash = hash_refresh_token(raw_refresh_token)
-            
             expire_days = (
                 settings.REMEMBER_ME_EXPIRE_DAYS
                 if login_data.remember_me
                 else settings.REFRESH_TOKEN_EXPIRE_DAYS
             )
-            
-            refresh_expires_at = (
-                utc_now()+timedelta(days=expire_days)
+
+            login_response, raw_refresh_token, refresh_max_age = (
+                await self._issue_token_pair(
+                    user=user,
+                    refresh_expire_days=expire_days,
+                )
             )
             
-            refresh_token = RefreshToken(
-                user_id=user.id,
-                family_id=uuid4(),
-                token_hash=token_hash,
-                expires_at=refresh_expires_at,
-                is_revoked=False
-            )
-            
-            await self.refresh_token_repo.create(refresh_token)
-            
-            logger.info("User created Successfully | user_id=%s", user.id)
+            logger.info("User logged in Successfully | user_id=%s", user.id)
 
 
         except AppException:
@@ -131,41 +172,146 @@ class AuthService:
 
         result =  ApiResponse[LoginResponse](
             message="Login successful",
-            data=LoginResponse(
-                access_token=access_token,
-                token_type="bearer",
-                expires_in=(settings.ACCESS_TOKEN_EXPIRE_MINUTES*60),
-                user=UserResponse(
-                    id=user.id,
-                    email=user.email,
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    is_active=user.is_active,
-                ),
-            ),
+            data=login_response,
         )
-        max_age = expire_days * 24 * 60 * 60
-        return result, raw_refresh_token, max_age
+        return result, raw_refresh_token, refresh_max_age
+    
+    
+    async def _handle_refresh_token(
+        self,
+        stored_token: RefreshToken,
+    ) -> NoReturn:
+        logger.warning(
+            "Refresh token reuse detected | user_id=%s | family_id=%s",
+            stored_token.user_id,
+            stored_token.family_id,
+        )
 
-    async def logout(self, session_id: UUID):
+        await self.refresh_token_repo.revoke_family(
+            stored_token.family_id,
+        )
+        await self.db.commit()
+        raise UnauthorizedException(message="Invalid refresh token")
+    
+    
+    async def refresh_token(
+        self,
+        raw_refresh_token: str | None,
+    ) -> tuple[ApiResponse[TokenResponse], str, int]:
+        
+        try:
+            if raw_refresh_token is None:
+                logger.warning("Refresh token is required")
+                raise UnauthorizedException(message="Refresh token is required")
+            
+            now = utc_now()
+            
+            token_hash = hash_refresh_token(raw_refresh_token)
+            
+            stored_token = await self.refresh_token_repo.get_by_token_hash(token_hash)
+            
+            if stored_token is None:
+                logger.warning("Unknown refresh token presented")
+                raise UnauthorizedException(message="Invalid refresh token")
+            
+            if stored_token.expires_at <= now:
+                logger.warning("Expired refresh token presented  | user_id=%s"
+                    " | family_id=%s", stored_token.user_id,stored_token.family_id,
+                )
+                raise UnauthorizedException(message="Refresh token has expired")
+            
+            if stored_token.is_revoked:
+                await self._handle_refresh_token(stored_token)
+                
+            user = await self.user_repo.get_by_id(stored_token.user_id)
+            
+            if user is None or not user.is_active:
+                await self.refresh_token_repo.revoke_all_for_user(stored_token.user_id)
+                raise UnauthorizedException(message="Invalid refresh token")
+            
+            revoked = await self.refresh_token_repo.revoke_if_active(stored_token.id)
+            
+            if not revoked:
+                await self._handle_refresh_token(stored_token)
+                
+            new_raw_refresh_token = create_refresh_token()
+            
+            new_token_hash = hash_refresh_token(new_raw_refresh_token)
+            
+            new_refresh_token = RefreshToken(
+                user_id=user.id,
+                family_id=stored_token.family_id,
+                token_hash=new_token_hash,
+                expires_at=stored_token.expires_at,
+                is_revoked=False,
+            )
+            
+            await self.refresh_token_repo.create(new_refresh_token)
+            
+            access_token = create_access_token({"sub": str(user.id)})
+            
+            remaining_seconds = max(
+                1,
+                int((stored_token.expires_at - now).total_seconds()),
+            )
+            
+            logger.info(
+                "Refresh token rotated successfully | "
+                "user_id=%s | family_id=%s",
+                user.id,
+                stored_token.family_id,
+            )
+
+            result = ApiResponse[TokenResponse](
+                message="Token refreshed successfully",
+                data=TokenResponse(
+                    access_token=access_token,
+                    token_type="bearer",
+                    expires_in=(
+                        settings.ACCESS_TOKEN_EXPIRE_MINUTES
+                        * 60
+                    ),
+                ),
+            )
+
+            return (
+                result,
+                new_raw_refresh_token,
+                remaining_seconds,
+            )
+        
+        except AppException:
+            await self._rollback()
+            raise
+
+        except Exception:
+            await self._rollback()
+            logger.exception(
+                "Unexpected error while refreshing token",
+            )
+            raise       
+    
+
+    async def logout_current_device(self, raw_refresh_token: str | None) -> None:
 
         try:
-            session = await self.session_repo.get_by_id(session_id)
-            if session is None:
-                logger.warning(
-                    "Logout requested for non-existent session session_id=%s",
-                    session_id,
-                )
-                return ApiResponse[None](
-                    message="Logged out successfully",
-                )
+            if raw_refresh_token is None:
+                logger.info("Logout requested without a refresh token")
+                return
 
-            await self.session_repo.delete(session)
-            await self.db.commit()
+            token_hash = hash_refresh_token(raw_refresh_token)
 
+            stored_token = await self.refresh_token_repo.get_by_token_hash(token_hash)
+
+            if stored_token is None:
+                logger.info("Logout requested with an unknown refresh token")
+                return
+
+            await self.refresh_token_repo.revoke_family(stored_token.family_id)
             logger.info(
-                "User logged out successfully | session_id=%s",
-                session_id,
+                "User logged out successfully | user_id=%s | family_id=%s",
+                stored_token.user_id,
+                stored_token.family_id,
             )
 
         except AppException:
@@ -174,75 +320,32 @@ class AuthService:
 
         except Exception:
             await self._rollback()
-            logger.exception("Unexpected error while refreshing token")
+            logger.exception("Unexpected error while logging out")
             raise
-
-        return ApiResponse[None](
-            message="Logged out successfully",
-        )
-
-    async def get_current_session(self, session_id: UUID):
-
-        now = utc_now()
-
-        session = await self.session_repo.get_active_by_id(
-            session_id,
-            now=now,
-        )
-
-        if session is None:
-            logger.warning(
-                "Invalid or expired session | session_id=%s",
-                session_id,
-            )
-            raise UnauthorizedException(message="Invalid or expired session")
-
-        user = await self.user_repo.get_by_id(session.user_id)
-
-        if user is None:
-            logger.warning(
-                "User not found for session | session_id=%s",
-                session_id,
-            )
-            raise UnauthorizedException(message="Invalid session")
-
-        if not user.is_active:
-            logger.warning(
-                "Inactive user | user_id=%s",
-                user.id,
-            )
-            raise UnauthorizedException(message="Invalid session")
-
-        if session.remember_me:
-            absolute_expiration = session.created_at + timedelta(
-                days=settings.REMEMBER_ME_EXPIRE_DAYS
-            )
-
-            renew_threshold = timedelta(days=1)
-
-            if session.expires_at - now <= renew_threshold:
-                new_expiration = min(
-                    now + timedelta(days=settings.SESSION_EXPIRE_DAYS),
-                    absolute_expiration,
+        
+        
+    async def logout_all_devices(self, user_id: UUID) -> None:
+    
+            try:
+                if user_id is None:
+                    logger.info("Logout requested without a refresh token")
+                    return
+    
+                await self.refresh_token_repo.revoke_all_for_user(user_id)
+                logger.info(
+                    "User logged out successfully | user_id=%s",
+                    user_id,
                 )
-
-                if new_expiration > session.expires_at:
-                    session.expires_at = new_expiration
-                    await self.db.commit()
-
-        return ApiResponse[LoginResponse](
-            message="Session retrieved successfully",
-            data=LoginResponse(
-                session_id=session.id,
-                user=UserResponse(
-                    id=user.id,
-                    email=user.email,
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    is_active=user.is_active,
-                ),
-            ),
-        )
+    
+            except AppException:
+                await self._rollback()
+                raise
+    
+            except Exception:
+                await self._rollback()
+                logger.exception("Unexpected error while logging out")
+                raise
+            
 
     async def request_passcode(
         self,
@@ -289,7 +392,7 @@ class AuthService:
         email: str,
         passcode: str,
         redis: Redis,
-    ) -> ApiResponse[LoginResponse]:
+    ) -> tuple[ApiResponse[LoginResponse], str, int]:
 
         try:
             email = email.strip().lower()
@@ -401,17 +504,12 @@ class AuthService:
                 await self.user_repo.create(user)
             logger.info("User created Successfully | email=%s", email)
 
-            session = Session(
-                user_id=user.id,
-                expires_at=utc_now()
-                + timedelta(
-                    days=settings.SESSION_EXPIRE_DAYS,
-                ),
+            login_response, raw_refresh_token, refresh_max_age = (
+                await self._issue_token_pair(
+                    user=user,
+                    refresh_expire_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
+                )
             )
-
-            await self.session_repo.create(session)
-
-            await self.db.commit()
 
         except AppException:
             await self._rollback()
@@ -424,18 +522,13 @@ class AuthService:
 
             raise
 
-        return ApiResponse[LoginResponse](
-            message="Login successful",
-            data=LoginResponse(
-                session_id=session.id,
-                user=UserResponse(
-                    id=user.id,
-                    email=user.email,
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    is_active=user.is_active,
-                ),
+        return (
+            ApiResponse[LoginResponse](
+                message="Login successful",
+                data=login_response,
             ),
+            raw_refresh_token,
+            refresh_max_age,
         )
 
     async def start_oauth(self, provider: str) -> str:
@@ -678,20 +771,20 @@ class AuthService:
                 email,
             )
 
-            session = Session(
-                user_id=user.id,
-                expires_at=utc_now() + timedelta(days=settings.SESSION_EXPIRE_DAYS),
+            login_response, raw_refresh_token, refresh_max_age = (
+                await self._issue_token_pair(
+                    user=user,
+                    refresh_expire_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
+                )
             )
 
-            await self.session_repo.create(session)
-
-            await self.db.commit()
-
-            return ApiResponse(
-                message=f"{provider.capitalize()} authentication successful",
-                data={
-                    "session_id": str(session.id),
-                },
+            return (
+                ApiResponse[LoginResponse](
+                    message=f"{provider.capitalize()} authentication successful",
+                    data=login_response,
+                ),
+                raw_refresh_token,
+                refresh_max_age,
             )
 
         except AppException:
