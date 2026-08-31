@@ -40,7 +40,7 @@ async def login(
 ):
     service = AuthService(db=db, redis=redis)
 
-    (result,raw_refresh_token,refresh_max_age) = await service.login(login_data)
+    (result, raw_refresh_token, refresh_max_age) = await service.login(login_data)
 
     if result.data is None:
         raise InternalServerException(
@@ -147,7 +147,7 @@ async def logout_all_devices(
         httponly=True,
         samesite="none",
     )
-    
+
 
 @router.get(
     "/me",
@@ -165,7 +165,8 @@ async def get_current_user_details(
             first_name=current_user.first_name,
             last_name=current_user.last_name,
             is_active=current_user.is_active,
-            ),
+            role=current_user.role,
+        ),
     )
 
 
@@ -192,15 +193,15 @@ async def request_passcode(
 @router.post(
     "/passcode/verify",
     response_model=ApiResponse[LoginResponse],
-    responses=AUTH_ERROR_RESPONSES
+    responses=AUTH_ERROR_RESPONSES,
 )
 async def verify_passcode(
     login_data: PasscodeVerifyRequest,
     response: Response,
     redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
-)-> ApiResponse[LoginResponse]:
-    
+) -> ApiResponse[LoginResponse]:
+
     service = AuthService(db=db, redis=redis)
 
     (result, raw_refresh_token, refresh_max_age) = await service.verify_email_passcode(
@@ -208,7 +209,7 @@ async def verify_passcode(
         passcode=login_data.passcode,
         redis=redis,
     )
-    
+
     set_refresh_token_cookie(
         response=response,
         raw_refresh_token=raw_refresh_token,
@@ -216,6 +217,7 @@ async def verify_passcode(
     )
 
     return result
+
 
 def set_refresh_token_cookie(
     *,

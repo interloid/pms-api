@@ -5,4 +5,11 @@ from .refresh_token_model import RefreshToken
 from .user_identity_model import UserIdentity
 from .user_model import User
 
-__all__ = ["RefreshToken", "User", "Product", "ProductImage", "Category", "UserIdentity"]
+__all__ = [
+    "RefreshToken",
+    "User",
+    "Product",
+    "ProductImage",
+    "Category",
+    "UserIdentity",
+]

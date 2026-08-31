@@ -17,7 +17,7 @@ class RefreshTokenRepository:
         await self.db.flush()
         await self.db.refresh(refresh_token)
         return refresh_token
-    
+
     async def get_by_token_hash(self, token_hash: str) -> RefreshToken | None:
         stmt = select(RefreshToken).where(
             RefreshToken.token_hash == token_hash,
@@ -25,13 +25,16 @@ class RefreshTokenRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_all_by_family_id(self, family_id: UUID) -> list[RefreshToken]:
 
-    async def get_all_by_family_id(self,  family_id: UUID) -> list[RefreshToken]:
-
-        stmt = select(RefreshToken).where(RefreshToken.family_id == family_id).order_by(RefreshToken.created_at.asc())
+        stmt = (
+            select(RefreshToken)
+            .where(RefreshToken.family_id == family_id)
+            .order_by(RefreshToken.created_at.asc())
+        )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
-    
+
     async def revoke_if_active(self, token_id: UUID) -> bool:
         stmt = (
             update(RefreshToken)
@@ -46,9 +49,8 @@ class RefreshTokenRepository:
         )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none() is not None
-    
 
-    async def revoke_family(self,  family_id: UUID) -> None:
+    async def revoke_family(self, family_id: UUID) -> None:
 
         stmt = (
             update(RefreshToken)
@@ -64,10 +66,7 @@ class RefreshTokenRepository:
 
         stmt = (
             update(RefreshToken)
-            .where(
-                RefreshToken.user_id == user_id,
-                RefreshToken.is_revoked.is_(False)
-            )
+            .where(RefreshToken.user_id == user_id, RefreshToken.is_revoked.is_(False))
             .values(is_revoked=True)
         )
         await self.db.execute(stmt)

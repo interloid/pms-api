@@ -7,11 +7,8 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user
-from app.core.constants import (
-    PaginationEnum,
-    ProductStatusEnum,
-)
+from app.api.authorization import require_permission
+from app.core.constants import PaginationEnum, PermissionEnum, ProductStatusEnum
 from app.db.session import get_db
 from app.exceptions.custom import BadRequestException
 from app.exceptions.global_exception import CRUD_ERROR_RESPONSES
@@ -30,7 +27,8 @@ from app.schemas.response import (
 from app.services.product_service import ProductService
 
 router = APIRouter(
-    prefix="/products", tags=["Products"], dependencies=[Depends(get_current_user)]
+    prefix="/products",
+    tags=["Products"],
 )
 
 
@@ -52,6 +50,7 @@ def to_product_response(product: Product) -> ProductResponse:
 
 @router.post(
     "",
+    dependencies=[Depends(require_permission(PermissionEnum.CREATE_PRODUCTS))],
     response_model=ApiResponse[ProductResponse],
     status_code=status.HTTP_201_CREATED,
     responses=CRUD_ERROR_RESPONSES,
@@ -99,6 +98,7 @@ async def create_product(
 
 @router.get(
     "",
+    dependencies=[Depends(require_permission(PermissionEnum.VIEW_PRODUCTS))],
     response_model=PaginatedResponse[ProductResponse],
     status_code=status.HTTP_200_OK,
     responses=CRUD_ERROR_RESPONSES,
@@ -188,6 +188,7 @@ async def list_products(
 
 @router.get(
     "/{id}",
+    dependencies=[Depends(require_permission(PermissionEnum.VIEW_PRODUCTS))],
     response_model=ApiResponse[ProductResponse],
     status_code=status.HTTP_200_OK,
     responses=CRUD_ERROR_RESPONSES,
@@ -241,6 +242,7 @@ def parse_removed_image_ids(
 
 @router.patch(
     "/{id}",
+    dependencies=[Depends(require_permission(PermissionEnum.UPDATE_PRODUCTS))],
     response_model=ApiResponse[ProductResponse],
     status_code=status.HTTP_200_OK,
     responses=CRUD_ERROR_RESPONSES,
@@ -314,6 +316,7 @@ async def update_product(
 
 @router.delete(
     "/{id}",
+    dependencies=[Depends(require_permission(PermissionEnum.DELETE_PRODUCTS))],
     status_code=status.HTTP_204_NO_CONTENT,
     responses=CRUD_ERROR_RESPONSES,
 )

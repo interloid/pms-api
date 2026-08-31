@@ -7,6 +7,7 @@ from app.core.constants import OAuthProviderEnum
 from app.schemas.common import BaseSchema
 from app.schemas.user_schema import UserResponse
 
+
 class PasscodeLoginRequest(BaseSchema):
     passcode: str = Field(min_length=6, max_length=128)
 
@@ -54,13 +55,14 @@ class OAuthUserInfo(BaseSchema):
     last_name: str | None = None
     email_verified: bool = False
 
+
 class AccessTokenPayload(BaseSchema):
     sub: UUID
     type: Literal["access"]
     exp: int
 
+
 class TokenResponse(BaseSchema):
     access_token: str
     token_type: Literal["bearer"] = "bearer"
     expires_in: int = Field(gt=0, description="Access token lifetime in seconds")
-    

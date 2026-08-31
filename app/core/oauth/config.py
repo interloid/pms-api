@@ -19,7 +19,7 @@ GOOGLE_CONFIG = OAuthProviderConfig(
     token_url=("https://oauth2.googleapis.com/token"),
     userinfo_url=("https://openidconnect.googleapis.com/v1/userinfo"),
     client_id=settings.GOOGLE_CLIENT_ID,
-    client_secret=settings.GOOGLE_CLIENT_SECRET,
+    client_secret=settings.GOOGLE_CLIENT_SECRET.get_secret_value(),
     redirect_uri=settings.GOOGLE_REDIRECT_URI,
     scopes=(
         "openid",
@@ -40,7 +40,7 @@ MICROSOFT_CONFIG = OAuthProviderConfig(
     ),
     userinfo_url=("https://graph.microsoft.com/oidc/userinfo"),
     client_id=settings.MICROSOFT_CLIENT_ID,
-    client_secret=settings.MICROSOFT_CLIENT_SECRET,
+    client_secret=settings.MICROSOFT_CLIENT_SECRET.get_secret_value(),
     redirect_uri=settings.MICROSOFT_REDIRECT_URI,
     scopes=(
         "openid",
@@ -54,7 +54,7 @@ GITHUB_CONFIG = OAuthProviderConfig(
     token_url=("https://github.com/login/oauth/access_token"),
     userinfo_url=("https://api.github.com/user"),
     client_id=settings.GITHUB_CLIENT_ID,
-    client_secret=settings.GITHUB_CLIENT_SECRET,
+    client_secret=settings.GITHUB_CLIENT_SECRET.get_secret_value(),
     redirect_uri=settings.GITHUB_REDIRECT_URI,
     scopes=(
         "read:user",

@@ -42,7 +42,7 @@ async def send_email(
             hostname=settings.SMTP_HOST,
             port=settings.SMTP_PORT,
             username=settings.SMTP_USERNAME,
-            password=settings.SMTP_PASSWORD,
+            password=settings.SMTP_PASSWORD.get_secret_value(),
             start_tls=settings.SMTP_START_TLS,
         )
         logger.info(

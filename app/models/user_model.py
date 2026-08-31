@@ -1,9 +1,10 @@
 from typing import TYPE_CHECKING
 
-# from uuid import UUID
 from sqlalchemy import Boolean, String, text
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.constants import RoleEnum
 from app.db import BaseEntity
 
 if TYPE_CHECKING:
@@ -48,10 +49,15 @@ class User(BaseEntity):
         nullable=False,
     )
 
-    passcode_hash: Mapped[str | None] = mapped_column(
-        String(64),
-        unique=True,
-        nullable=True,
+    role: Mapped[RoleEnum] = mapped_column(
+        SQLEnum(
+            RoleEnum,
+            name="user_role",
+            values_callable=lambda role_enum: [role.value for role in role_enum],
+        ),
+        nullable=False,
+        default=RoleEnum.VIEWER,
+        server_default=RoleEnum.VIEWER.value,
         index=True,
     )
 

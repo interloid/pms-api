@@ -1,7 +1,7 @@
 import hashlib
 import hmac
-from datetime import timedelta
 import secrets
+from datetime import timedelta
 
 import jwt
 from pwdlib import PasswordHash
@@ -16,19 +16,22 @@ from app.utils.helpers import utc_now
 _password_hash = PasswordHash.recommended()
 logger = get_logger(__name__)
 
+
 def hash_passcode(code: str) -> str:
     return hmac.new(
-        settings.PASSCODE_PEPPER.encode("utf-8"),
+        settings.PASSCODE_PEPPER.get_secret_value().encode("utf-8"),
         code.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
 
+
 def create_refresh_token() -> str:
     return secrets.token_urlsafe(64)
 
+
 def hash_refresh_token(code: str) -> str:
     return hmac.new(
-        settings.REFRESH_TOKEN_PEPPER.encode("utf-8"),
+        settings.REFRESH_TOKEN_PEPPER.get_secret_value().encode("utf-8"),
         code.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
@@ -57,11 +60,17 @@ def create_access_token(data: dict) -> str:
     expire = utc_now() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire, "type": "access"})
 
-    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return jwt.encode(
+        to_encode, settings.SECRET_KEY.get_secret_value(), algorithm=settings.ALGORITHM
+    )
+
 
 def decode_token(token: str) -> dict:
-    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    payload = jwt.decode(
+        token, settings.SECRET_KEY.get_secret_value(), algorithms=[settings.ALGORITHM]
+    )
     return payload
+
 
 def validate_access_token_payload(payload: dict) -> AccessTokenPayload:
     try:
@@ -73,4 +82,3 @@ def validate_access_token_payload(payload: dict) -> AccessTokenPayload:
             exc.errors(),
         )
         raise UnauthorizedException(message="Invalid access token")
-    
