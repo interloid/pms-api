@@ -245,9 +245,9 @@ Main endpoints:
 ```text
 POST   /api/v1/products
 GET    /api/v1/products
-GET    /api/v1/products/{product_id}
-PATCH  /api/v1/products/{product_id}
-DELETE /api/v1/products/{product_id}
+GET    /api/v1/products/{id}
+PATCH  /api/v1/products/{id}
+DELETE /api/v1/products/{id}
 ```
 
 Product creation uses:

@@ -5,6 +5,12 @@ from app.core.settings import settings
 
 
 def create_redis() -> Redis:
+    if settings.REDIS_URL:
+        return Redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+        )
+
     return Redis(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,

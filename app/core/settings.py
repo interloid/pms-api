@@ -39,6 +39,7 @@ class Settings(BaseSettings):
 
     OAUTH_STATE_EXPIRE_SECONDS: int = 600
 
+    REDIS_URL: str | None = None
     REDIS_HOST: str
     REDIS_PORT: int = 6379
     REDIS_USERNAME: str

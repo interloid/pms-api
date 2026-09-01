@@ -1,6 +1,9 @@
 from collections.abc import AsyncIterator
 
 import pytest_asyncio
+from asgi_lifespan import LifespanManager
+from dotenv import load_dotenv
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
@@ -8,6 +11,11 @@ from sqlalchemy.ext.asyncio import (
     AsyncSession,
     create_async_engine,
 )
+
+load_dotenv(".env.test", override=True)
+
+from app.db.session import get_db  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -53,3 +61,23 @@ async def db_session(
         join_transaction_mode="create_savepoint",
     ) as session:
         yield session
+
+
+@pytest_asyncio.fixture
+async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    async def override_get_db() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        async with LifespanManager(app):
+            transport = ASGITransport(app=app)
+
+            async with AsyncClient(
+                transport=transport,
+                base_url="http://test",
+            ) as test_client:
+                yield test_client
+    finally:
+        app.dependency_overrides.pop(get_db, None)
