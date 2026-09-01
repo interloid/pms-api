@@ -7,12 +7,13 @@ from uuid import uuid4
 import pytest
 from fastapi import FastAPI
 from pydantic import ValidationError
-from tests.api.conftest import ApiClient
 
 from app.api.dependencies import get_current_user
 from app.api.v1.endpoints.product_router import router
+from app.core.constants import RoleEnum
 from app.db.session import get_db
 from app.schemas.product_schema import ProductCreate
+from tests.api.conftest import ApiClient
 
 
 @pytest.fixture
@@ -21,7 +22,7 @@ def client():
     app.include_router(router)
 
     async def current_user():
-        return {"id": uuid4()}
+        return SimpleNamespace(id=uuid4(), role=RoleEnum.ADMIN)
 
     async def database():
         return object()

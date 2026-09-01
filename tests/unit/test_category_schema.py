@@ -3,6 +3,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from app.core.constants import RoleEnum
 from app.schemas.category_schema import CategoryResponse
 from app.schemas.session_schema import SessionResponse
 from app.schemas.user_schema import UserResponse
@@ -51,6 +52,7 @@ def test_session_response_valid():
         first_name="John",
         last_name="Doe",
         is_active=True,
+        role=RoleEnum.VIEWER,
     )
 
     response = SessionResponse(

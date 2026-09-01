@@ -1,6 +1,9 @@
-# pms-api
+# Product Management API
 
 A RESTful Product Management API built with FastAPI, PostgreSQL, SQLAlchemy, Redis, and Docker.
+
+
+## Deployment Link : 
 
 ## Tech Stack
 
@@ -20,11 +23,13 @@ A RESTful Product Management API built with FastAPI, PostgreSQL, SQLAlchemy, Red
 ## Features
 
 - User registration and authentication
+- Role-based access control is enforced at the API boundary.
 - Email passcode authentication
-- Session-based authentication
-- Remember Me with sliding session expiration
+- JWT authentication
+- Remember Me with sliding expiration
 - Google OAuth
 - Microsoft OAuth
+- Github OAuth
 - Product CRUD operations
 - Product image upload
 - Amazon S3 image storage
@@ -54,8 +59,8 @@ Before running the application locally, install:
 ## 1. Clone the repository
 
 ```bash
-git clone https://github.com/interloid/pms-api.git
-cd pms-api
+git clone git@github.com:interloid/product-management-api.git
+cd product-management-api
 ```
 
 ## 2. Create virtual environment
@@ -204,19 +209,21 @@ pytest --cov=app
 
 # API Authentication
 
-The application uses session-based authentication.
+The application uses JWT access tokens and opaque refresh tokens.
 
-After successful login, the backend sets an HTTP-only session cookie:
-
-```text
-session
-```
+After successful login, the backend:
+- Returns a short-lived JWT access token.
+- Sets the opaque refresh token as a secure, HTTP-only cookie.
+- Stores only the refresh token’s hash in PostgreSQL.
 
 The frontend must send credentials with requests:
 
 ```javascript
 fetch(url, {
-    credentials: "include"
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+  },
+  credentials: "include",
 });
 ```
 
@@ -225,7 +232,7 @@ fetch(url, {
 Normal login:
 
 ```text
-SESSION_EXPIRE_DAYS=7
+REFRESH_TOKEN_EXPIRE_DAYS=7
 ```
 
 Remember Me:
@@ -234,7 +241,7 @@ Remember Me:
 REMEMBER_ME_EXPIRE_DAYS=30
 ```
 
-When `remember_me=true`, the session uses sliding expiration while respecting the 30-day absolute maximum.
+When `remember_me=true`, the refresh token and cookie use the longer expiration period. The access token remains short-lived in both cases.
 
 ---
 

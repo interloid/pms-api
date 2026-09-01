@@ -87,7 +87,7 @@ async def test_passcode_validation_error(
     passcode: str,
 ) -> None:
     response = await client.post(
-        "/api/v1/auth/passcode/verify",
+        "/api/v1/auth/passcode/verifications",
         json={
             "email": "validation@example.com",
             "passcode": passcode,
@@ -107,7 +107,7 @@ async def test_missing_passcode_returns_unauthorized(
     client: AsyncClient,
 ) -> None:
     response = await client.post(
-        "/api/v1/auth/passcode/verify",
+        "/api/v1/auth/passcode/verifications",
         json={
             "email": "missing@example.com",
             "passcode": "123456",
@@ -134,7 +134,7 @@ async def test_incorrect_passcode_increments_attempts(
     )
 
     response = await client.post(
-        "/api/v1/auth/passcode/verify",
+        "/api/v1/auth/passcode/verifications",
         json={
             "email": email,
             "passcode": "654321",
@@ -177,7 +177,7 @@ async def test_maximum_passcode_attempts_returns_too_many_requests(
 
     for attempt_number in range(1, max_attempts + 1):
         response = await client.post(
-            "/api/v1/auth/passcode/verify",
+            "/api/v1/auth/passcode/verifications",
             json={
                 "email": email,
                 "passcode": "654321",
@@ -190,7 +190,7 @@ async def test_maximum_passcode_attempts_returns_too_many_requests(
             assert response.status_code == 429
 
     blocked_response = await client.post(
-        "/api/v1/auth/passcode/verify",
+        "/api/v1/auth/passcode/verifications",
         json={
             "email": email,
             "passcode": "123456",
@@ -231,7 +231,7 @@ async def test_inactive_user_cannot_login_with_passcode(
     )
 
     response = await client.post(
-        "/api/v1/auth/passcode/verify",
+        "/api/v1/auth/passcode/verifications",
         json={
             "email": email,
             "passcode": "123456",
@@ -272,7 +272,7 @@ async def test_existing_user_can_login_with_passcode(
     )
 
     response = await client.post(
-        "/api/v1/auth/passcode/verify",
+        "/api/v1/auth/passcode/verifications",
         json={
             "email": email,
             "passcode": passcode,
@@ -337,7 +337,7 @@ async def test_passcode_login_creates_new_user(
     )
 
     response = await client.post(
-        "/api/v1/auth/passcode/verify",
+        "/api/v1/auth/passcode/verifications",
         json={
             "email": email,
             "passcode": passcode,
@@ -407,7 +407,7 @@ async def test_passcode_can_only_be_used_once(
     )
 
     first_response = await client.post(
-        "/api/v1/auth/passcode/verify",
+        "/api/v1/auth/passcode/verifications",
         json={
             "email": email,
             "passcode": passcode,
@@ -417,7 +417,7 @@ async def test_passcode_can_only_be_used_once(
     assert first_response.status_code == 200
 
     second_response = await client.post(
-        "/api/v1/auth/passcode/verify",
+        "/api/v1/auth/passcode/verifications",
         json={
             "email": email,
             "passcode": passcode,

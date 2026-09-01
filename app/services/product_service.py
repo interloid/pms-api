@@ -1,3 +1,4 @@
+import hashlib
 from decimal import Decimal
 from uuid import UUID
 
@@ -125,11 +126,36 @@ class ProductService(BaseService[Product]):
                     object_key,
                 )
 
+    async def _hash_product_images(
+        self,
+        images: list[UploadFile],
+    ) -> list[str]:
+        """Hash uploads and leave every stream ready for the S3 upload."""
+        content_hashes: list[str] = []
+
+        for image in images:
+            digest = hashlib.sha256()
+            image.file.seek(0)
+
+            while chunk := image.file.read(1024 * 1024):
+                digest.update(chunk)
+
+            image.file.seek(0)
+            content_hashes.append(digest.hexdigest())
+
+        if len(content_hashes) != len(set(content_hashes)):
+            raise ConflictException(
+                message="Duplicate images are not allowed",
+            )
+
+        return content_hashes
+
     async def create_product(
         self, payload: ProductCreate, images: list[UploadFile]
     ) -> Product:
 
         await self._validate_product_images(images)
+        content_hashes = await self._hash_product_images(images)
 
         existing_product = await self.product_repo.get_by_sku(sku=payload.sku)
 
@@ -164,12 +190,15 @@ class ProductService(BaseService[Product]):
                 product=product,
             )
 
-            for index, image in enumerate(images):
+            for index, (image, content_hash) in enumerate(
+                zip(images, content_hashes, strict=True)
+            ):
                 product_image = await self.product_image_service.upload_image(
                     product_id=product.id,
                     file=image.file,
                     filename=image.filename or "image",
                     content_type=image.content_type or "application/octet-stream",
+                    content_hash=content_hash,
                     is_primary=(index == 0),
                 )
 
@@ -185,20 +214,18 @@ class ProductService(BaseService[Product]):
 
             return product
 
+        except IntegrityError as exc:
+            await self.db.rollback()
+            await self._cleanup_s3(uploaded_object_keys)
+            raise ConflictException(
+                message=(
+                    "Product could not be created because of a conflicting resource"
+                ),
+            ) from exc
+
         except Exception:
             await self.db.rollback()
-
-            for object_key in uploaded_object_keys:
-                try:
-                    await self.product_image_service.s3_service.delete_file(
-                        object_key=object_key,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to clean up S3 object after "
-                        "product creation failure | object_key=%s",
-                        object_key,
-                    )
+            await self._cleanup_s3(uploaded_object_keys)
             raise
 
     async def get_product(self, product_id: UUID) -> Product:
@@ -369,6 +396,17 @@ class ProductService(BaseService[Product]):
                 ),
             )
 
+        content_hashes = await self._hash_product_images(images)
+        retained_hashes = {
+            image.content_hash
+            for image in product.images
+            if image.id not in removed_image_id_set and image.content_hash is not None
+        }
+        if retained_hashes.intersection(content_hashes):
+            raise ConflictException(
+                message="Duplicate images are not allowed",
+            )
+
         updates = payload.model_dump(exclude_unset=True)
 
         if "sku" in updates and updates["sku"] != product.sku:
@@ -428,6 +466,7 @@ class ProductService(BaseService[Product]):
                 uploaded_images = await self.product_image_service.add_images(
                     product_id=product.id,
                     images=images,
+                    content_hashes=content_hashes,
                 )
                 uploaded_object_keys.extend(
                     image.object_key for image in uploaded_images
@@ -451,6 +490,7 @@ class ProductService(BaseService[Product]):
             return product
 
         except IntegrityError as exc:
+            await self.db.rollback()
             await self._cleanup_s3(uploaded_object_keys)
 
             logger.warning(
@@ -463,6 +503,7 @@ class ProductService(BaseService[Product]):
             ) from exc
 
         except Exception:
+            await self.db.rollback()
             await self._cleanup_s3(uploaded_object_keys)
             raise
 

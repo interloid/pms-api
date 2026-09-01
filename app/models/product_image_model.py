@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Boolean, ForeignKey, Index, Text, text
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,6 +20,11 @@ class ProductImage(BaseEntity):
             "product_id",
             unique=True,
             postgresql_where=text("is_primary = true"),
+        ),
+        UniqueConstraint(
+            "product_id",
+            "content_hash",
+            name="uq_product_images_product_id_content_hash",
         ),
     )
 
@@ -46,6 +51,11 @@ class ProductImage(BaseEntity):
         Text,
         nullable=False,
         unique=True,
+    )
+
+    content_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
     )
 
     product: Mapped["Product"] = relationship(

@@ -2,51 +2,69 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from starlette.requests import Request
+from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.dependencies import get_current_user, get_product_image_service
+from app.core.security import create_access_token
 from app.exceptions.custom import UnauthorizedException
 
 
-def make_request(session_cookie=None):
-    headers = []
-    if session_cookie is not None:
-        headers.append((b"cookie", f"session={session_cookie}".encode()))
-    return Request({"type": "http", "headers": headers})
-
-
 @pytest.mark.asyncio
-async def test_get_current_user_rejects_missing_session_cookie():
+async def test_get_current_user_rejects_missing_bearer_token():
     with pytest.raises(UnauthorizedException, match="Authentication required"):
-        await get_current_user(make_request(), db=object(), redis=object())
+        await get_current_user(credentials=None, db=object())
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_rejects_invalid_session_cookie():
-    with pytest.raises(UnauthorizedException, match="Invalid session"):
-        await get_current_user(
-            make_request("invalid-uuid"),
-            db=object(),
-            redis=object(),
-        )
+async def test_get_current_user_rejects_invalid_access_token():
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials="invalid-token",
+    )
+    with pytest.raises(UnauthorizedException, match="Invalid access token"):
+        await get_current_user(credentials=credentials, db=object())
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_returns_authenticated_session():
-    session_id = uuid4()
-    expected = {"user_id": str(uuid4())}
+async def test_get_current_user_rejects_non_bearer_scheme():
+    credentials = HTTPAuthorizationCredentials(scheme="Basic", credentials="token")
+    with pytest.raises(UnauthorizedException, match="Invalid authentication scheme"):
+        await get_current_user(credentials=credentials, db=object())
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_returns_active_user_from_access_token():
+    user_id = uuid4()
+    expected_user = MagicMock(id=user_id, is_active=True)
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials=create_access_token({"sub": str(user_id)}),
+    )
     with patch(
-        "app.api.dependencies.AuthService.get_current_session",
-        new=AsyncMock(return_value=expected),
-    ) as get_session:
-        result = await get_current_user(
-            make_request(session_id),
-            db=object(),
-            redis=object(),
-        )
+        "app.api.dependencies.UserRepository.get_by_id",
+        new=AsyncMock(return_value=expected_user),
+    ) as get_by_id:
+        result = await get_current_user(credentials=credentials, db=object())
 
-    assert result == expected
-    get_session.assert_awaited_once_with(session_id=session_id)
+    assert result is expected_user
+    get_by_id.assert_awaited_once_with(user_id)
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_rejects_inactive_user():
+    user_id = uuid4()
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials=create_access_token({"sub": str(user_id)}),
+    )
+    with (
+        patch(
+            "app.api.dependencies.UserRepository.get_by_id",
+            new=AsyncMock(return_value=MagicMock(is_active=False)),
+        ),
+        pytest.raises(UnauthorizedException, match="Invalid access token"),
+    ):
+        await get_current_user(credentials=credentials, db=object())
 
 
 @pytest.mark.asyncio
@@ -56,10 +74,7 @@ async def test_get_product_image_service_builds_dependencies():
     s3_service = MagicMock()
     built_service = MagicMock()
     with (
-        patch(
-            "app.api.dependencies.ProductImageRepository",
-            return_value=repository,
-        ) as repository_class,
+        patch("app.api.dependencies.ProductImageRepository", return_value=repository),
         patch("app.api.dependencies.S3Service", return_value=s3_service),
         patch(
             "app.api.dependencies.ProductImageService",
@@ -69,7 +84,6 @@ async def test_get_product_image_service_builds_dependencies():
         result = await get_product_image_service(db=db)
 
     assert result is built_service
-    repository_class.assert_called_once_with(db=db)
     service_class.assert_called_once_with(
         product_image_repo=repository,
         s3_service=s3_service,

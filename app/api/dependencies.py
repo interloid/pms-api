@@ -8,17 +8,22 @@ from app.core.s3 import S3Service
 from app.core.security import decode_token, validate_access_token_payload
 from app.db.session import get_db
 from app.exceptions.custom import UnauthorizedException
+from app.models.user_model import User
 from app.repositories.product_image_repo import ProductImageRepository
 from app.repositories.user_repo import UserRepository
 from app.services.product_image_service import ProductImageService
 
-bearer_schema = HTTPBearer(auto_error=False)
+bearer_schema = HTTPBearer(
+    scheme_name="BearerAuth",
+    description="Enter the JWT access token",
+    auto_error=False,
+)
 
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Security(bearer_schema),
     db: AsyncSession = Depends(get_db),
-):
+) -> User:
 
     if credentials is None:
         raise UnauthorizedException(message="Authentication required")

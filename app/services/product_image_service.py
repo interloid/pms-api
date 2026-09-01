@@ -1,3 +1,4 @@
+import hashlib
 from typing import BinaryIO
 from uuid import UUID, uuid4
 
@@ -27,8 +28,17 @@ class ProductImageService:
         file: BinaryIO,
         filename: str,
         content_type: str,
+        content_hash: str | None = None,
         is_primary: bool = False,
     ) -> ProductImage:
+
+        if content_hash is None:
+            digest = hashlib.sha256()
+            file.seek(0)
+            while chunk := file.read(1024 * 1024):
+                digest.update(chunk)
+            file.seek(0)
+            content_hash = digest.hexdigest()
 
         extension = filename.rsplit(".", 1)[-1] if "." in filename else ""
 
@@ -44,37 +54,51 @@ class ProductImageService:
             content_type=content_type,
         )
 
-        image = ProductImage(
-            product_id=product_id,
-            url=url,
-            object_key=object_key,
-            is_primary=False,
-        )
+        try:
+            image = ProductImage(
+                product_id=product_id,
+                url=url,
+                object_key=object_key,
+                content_hash=content_hash,
+                is_primary=False,
+            )
 
-        image = await self.product_image_repo.create(image)
+            image = await self.product_image_repo.create(image)
 
-        if is_primary:
-            image = await self.product_image_repo.set_primary(image)
+            if is_primary:
+                image = await self.product_image_repo.set_primary(image)
 
-        return image
+            return image
+        except Exception:
+            try:
+                await self.s3_service.delete_file(object_key=object_key)
+            except Exception:
+                logger.exception(
+                    "Failed to clean up S3 object after database failure | "
+                    "object_key=%s",
+                    object_key,
+                )
+            raise
 
     async def add_images(
         self,
         *,
         product_id: UUID,
         images: list[UploadFile],
+        content_hashes: list[str],
     ) -> list[ProductImage]:
 
         uploaded_images: list[ProductImage] = []
         uploaded_object_keys: list[str] = []
 
         try:
-            for image in images:
+            for image, content_hash in zip(images, content_hashes, strict=True):
                 product_image = await self.upload_image(
                     product_id=product_id,
                     file=image.file,
                     filename=image.filename or "image",
                     content_type=image.content_type or "application/octet-stream",
+                    content_hash=content_hash,
                 )
 
                 uploaded_images.append(product_image)
