@@ -20,7 +20,14 @@ class CategoryRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_all(self) -> list[Category]:
-        stmt = select(Category).order_by(Category.name)
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+    async def get_all(self, search: str | None = None) -> list[Category]:
+
+        stmt = select(Category)
+
+        if search:
+            normalized_search = search.strip()
+
+            if normalized_search:
+                stmt = stmt.where(Category.name.ilike(f"%{normalized_search}%"))
+
+        return stmt.order_by(Category.name.asc())
