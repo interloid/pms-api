@@ -19,6 +19,10 @@ AUTH_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         "model": ErrorResponse,
         "description": "Internal server error",
     },
+    503: {
+        "model": ErrorResponse,
+        "description": "Service temporarily unavailable",
+    },
 }
 
 
@@ -50,5 +54,9 @@ CRUD_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {
         "model": ErrorResponse,
         "description": "Internal server error",
+    },
+    503: {
+        "model": ErrorResponse,
+        "description": "Service temporarily unavailable",
     },
 }

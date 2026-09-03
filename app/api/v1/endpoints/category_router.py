@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.authorization import require_permission
-from app.api.dependencies import get_current_user
 from app.core.constants import PaginationEnum, PermissionEnum
 from app.db.session import get_db
 from app.exceptions.global_exception import CRUD_ERROR_RESPONSES
@@ -14,7 +13,6 @@ from app.services.category_service import CategoryService
 router = APIRouter(
     prefix="/categories",
     tags=["Categories"],
-    dependencies=[Depends(get_current_user)],
 )
 
 

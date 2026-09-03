@@ -28,11 +28,6 @@ class ProductImage(BaseEntity):
         ),
     )
 
-    url: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
-
     is_primary: Mapped[bool] = mapped_column(
         Boolean,
         default=False,

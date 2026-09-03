@@ -17,9 +17,7 @@ async def test_upload_image_creates_product_image():
     repo = MagicMock()
     s3_service = MagicMock()
 
-    s3_service.upload_file = AsyncMock(
-        return_value="https://example.com/image.jpg",
-    )
+    s3_service.upload_file = AsyncMock()
 
     created_image = MagicMock()
 
@@ -54,9 +52,7 @@ async def test_upload_image_generates_object_key_with_extension():
     repo = MagicMock()
     s3_service = MagicMock()
 
-    s3_service.upload_file = AsyncMock(
-        return_value="https://example.com/image.jpg",
-    )
+    s3_service.upload_file = AsyncMock()
 
     repo.create = AsyncMock(
         side_effect=lambda image: image,
@@ -97,9 +93,7 @@ async def test_upload_image_generates_object_key_without_extension():
     repo = MagicMock()
     s3_service = MagicMock()
 
-    s3_service.upload_file = AsyncMock(
-        return_value="https://example.com/image",
-    )
+    s3_service.upload_file = AsyncMock()
 
     repo.create = AsyncMock(
         side_effect=lambda image: image,
@@ -132,7 +126,6 @@ async def test_get_image_returns_image():
     image = ProductImage(
         id=image_id,
         product_id=product_id,
-        url="https://example.com/image.jpg",
         object_key="products/image.jpg",
         is_primary=False,
     )
@@ -201,14 +194,12 @@ async def test_get_product_images_returns_images():
         ProductImage(
             id=uuid4(),
             product_id=product_id,
-            url="https://example.com/image1.jpg",
             object_key="products/image1.jpg",
             is_primary=True,
         ),
         ProductImage(
             id=uuid4(),
             product_id=product_id,
-            url="https://example.com/image2.jpg",
             object_key="products/image2.jpg",
             is_primary=False,
         ),
@@ -272,7 +263,6 @@ async def test_set_primary_image_sets_non_primary_image():
     image = ProductImage(
         id=image_id,
         product_id=product_id,
-        url="https://example.com/image.jpg",
         object_key="products/image.jpg",
         is_primary=False,
     )
@@ -316,7 +306,6 @@ async def test_set_primary_image_returns_image_when_already_primary():
     image = ProductImage(
         id=image_id,
         product_id=product_id,
-        url="https://example.com/image.jpg",
         object_key="products/image.jpg",
         is_primary=True,
     )

@@ -208,7 +208,9 @@ class AuthService:
 
             token_hash = hash_refresh_token(raw_refresh_token)
 
-            stored_token = await self.refresh_token_repo.get_by_token_hash(token_hash)
+            stored_token = await self.refresh_token_repo.get_by_token_hash_for_update(
+                token_hash
+            )
 
             if stored_token is None:
                 logger.warning("Unknown refresh token presented")
@@ -231,10 +233,8 @@ class AuthService:
                 await self.refresh_token_repo.revoke_all_for_user(stored_token.user_id)
                 raise UnauthorizedException(message="Invalid refresh token")
 
-            revoked = await self.refresh_token_repo.revoke_if_active(stored_token.id)
-
-            if not revoked:
-                await self._handle_refresh_token(stored_token)
+            stored_token.is_revoked = True
+            await self.db.flush()
 
             new_raw_refresh_token = create_refresh_token()
 

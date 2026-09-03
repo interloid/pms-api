@@ -1,16 +1,20 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.constants import RoleEnum
 from app.core.security import hash_password, hash_refresh_token
 from app.core.settings import settings
+from app.exceptions.custom import UnauthorizedException
 from app.models.refresh_token_model import RefreshToken
 from app.models.user_model import User
+from app.services.auth_service import AuthService
 
 
 async def create_user_and_login(
@@ -265,6 +269,73 @@ async def test_successful_refresh_rotates_token(
 
     assert me_response.status_code == 200
     assert me_response.json()["data"]["id"] == str(user.id)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_refresh_allows_only_one_rotation(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(
+        test_engine,
+        expire_on_commit=False,
+    )
+    user_id = uuid4()
+    raw_refresh_token = f"concurrent-{uuid4()}"
+    family_id = uuid4()
+
+    async with session_factory() as setup_session:
+        user = User(
+            id=user_id,
+            email=f"concurrent-refresh-{uuid4()}@example.com",
+            hashed_password=hash_password("CorrectPassword123!"),
+            first_name="Concurrent",
+            last_name="Refresh",
+            is_active=True,
+            role=RoleEnum.VIEWER,
+        )
+        setup_session.add(user)
+        await setup_session.flush()
+        setup_session.add(
+            RefreshToken(
+                user_id=user_id,
+                family_id=family_id,
+                token_hash=hash_refresh_token(raw_refresh_token),
+                expires_at=datetime.now(UTC) + timedelta(days=1),
+                is_revoked=False,
+            )
+        )
+        await setup_session.commit()
+
+    async def rotate() -> int:
+        async with session_factory() as session:
+            service = AuthService(
+                db=session,
+                redis=AsyncMock(),
+            )
+            try:
+                await service.refresh_token(raw_refresh_token)
+                await session.commit()
+                return 200
+            except UnauthorizedException:
+                return 401
+
+    try:
+        statuses = await asyncio.gather(rotate(), rotate())
+
+        assert sorted(statuses) == [200, 401]
+
+        async with session_factory() as verification_session:
+            result = await verification_session.execute(
+                select(RefreshToken).where(RefreshToken.family_id == family_id)
+            )
+            family_tokens = list(result.scalars().all())
+
+            assert len(family_tokens) == 2
+            assert all(token.is_revoked for token in family_tokens)
+    finally:
+        async with session_factory() as cleanup_session:
+            await cleanup_session.execute(delete(User).where(User.id == user_id))
+            await cleanup_session.commit()
 
 
 @pytest.mark.asyncio

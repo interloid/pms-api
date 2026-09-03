@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -71,6 +72,32 @@ async def test_get_categories_rejects_inactive_user(
 
     assert response.status_code == 401
     assert response.json()["success"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_categories_requires_view_products_permission(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    headers = await create_authenticated_headers(
+        db_session=db_session,
+    )
+
+    with patch(
+        "app.api.authorization.has_permission",
+        return_value=False,
+    ):
+        response = await client.get(
+            "/api/v1/categories",
+            headers=headers,
+        )
+
+    assert response.status_code == 403
+
+    response_data = response.json()
+
+    assert response_data["success"] is False
+    assert response_data["error"]["code"] == "FORBIDDEN"
 
 
 @pytest.mark.parametrize(

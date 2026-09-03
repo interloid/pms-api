@@ -14,6 +14,7 @@ from app.exceptions.custom import (
     ForbiddenException,
     InternalServerException,
     NotFoundException,
+    ServiceUnavailableException,
     UnauthorizedException,
 )
 from app.exceptions.global_exception import AUTH_ERROR_RESPONSES, CRUD_ERROR_RESPONSES
@@ -85,6 +86,12 @@ def test_app_exception_sets_all_attributes():
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "INTERNAL_SERVER_ERROR",
             "Internal server error",
+        ),
+        (
+            ServiceUnavailableException,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "SERVICE_UNAVAILABLE",
+            "Service temporarily unavailable",
         ),
     ],
 )
@@ -358,6 +365,7 @@ def test_auth_error_responses_contains_expected_status_codes():
         403,
         422,
         500,
+        503,
     }
 
     assert set(AUTH_ERROR_RESPONSES.keys()) == expected_status_codes
@@ -372,6 +380,7 @@ def test_crud_error_responses_contains_expected_status_codes():
         409,
         422,
         500,
+        503,
     }
 
     assert set(CRUD_ERROR_RESPONSES.keys()) == expected_status_codes

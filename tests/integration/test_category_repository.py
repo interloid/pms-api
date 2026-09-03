@@ -111,7 +111,7 @@ async def test_list_statement_returns_categories_in_name_order(
 
     repo = CategoryRepository(db_session)
 
-    stmt = await repo.get_all(
+    stmt = repo.get_all(
         search=search_value,
     )
 
@@ -153,7 +153,7 @@ async def test_list_statement_filters_categories_by_search(
 
     repo = CategoryRepository(db_session)
 
-    stmt = await repo.get_all(
+    stmt = repo.get_all(
         search=unique_value,
     )
 
@@ -181,7 +181,7 @@ async def test_list_statement_search_is_case_insensitive(
 
     repo = CategoryRepository(db_session)
 
-    stmt = await repo.get_all(
+    stmt = repo.get_all(
         search=f"mixedcase-{unique_value}",
     )
 
@@ -199,7 +199,7 @@ async def test_list_statement_returns_empty_list_when_search_has_no_match(
 ) -> None:
     repo = CategoryRepository(db_session)
 
-    stmt = await repo.get_all(
+    stmt = repo.get_all(
         search=f"missing-{uuid4().hex}",
     )
 

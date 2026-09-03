@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.authorization import require_permission
 from app.core.constants import PaginationEnum, PermissionEnum, ProductStatusEnum
+from app.core.s3 import S3Service
 from app.db.session import get_db
 from app.exceptions.custom import BadRequestException
 from app.exceptions.global_exception import CRUD_ERROR_RESPONSES
@@ -32,7 +33,10 @@ router = APIRouter(
 )
 
 
-def to_product_response(product: Product) -> ProductResponse:
+def build_product_response(
+    product: Product,
+    presigned_urls: dict[str, str],
+) -> ProductResponse:
     return ProductResponse(
         id=product.id,
         name=product.name,
@@ -42,10 +46,47 @@ def to_product_response(product: Product) -> ProductResponse:
         stock=product.stock,
         status=ProductStatusEnum(product.status),
         description=product.description,
-        images=[ProductImageResponse.model_validate(image) for image in product.images],
+        images=[
+            ProductImageResponse(
+                id=image.id,
+                url=presigned_urls[image.object_key],
+                is_primary=image.is_primary,
+            )
+            for image in product.images
+        ],
         created_at=product.created_at,
         updated_at=product.updated_at,
     )
+
+
+async def to_product_responses(
+    products: list[Product],
+    s3_service: S3Service,
+) -> list[ProductResponse]:
+    object_keys = [image.object_key for product in products for image in product.images]
+
+    presigned_urls = await s3_service.generate_presigned_urls(
+        object_keys=object_keys,
+    )
+
+    return [
+        build_product_response(
+            product=product,
+            presigned_urls=presigned_urls,
+        )
+        for product in products
+    ]
+
+
+async def to_product_response(
+    product: Product,
+    s3_service: S3Service,
+) -> ProductResponse:
+    responses = await to_product_responses(
+        products=[product],
+        s3_service=s3_service,
+    )
+    return responses[0]
 
 
 @router.post(
@@ -65,6 +106,7 @@ async def create_product(
     description: Annotated[str | None, Form()] = None,
     images: Annotated[list[UploadFile], File()] = [],
     db: AsyncSession = Depends(get_db),
+    s3_service: S3Service = Depends(S3Service),
 ) -> ApiResponse[ProductResponse]:
 
     try:
@@ -87,7 +129,10 @@ async def create_product(
 
         return ApiResponse(
             message="Product created successfully",
-            data=to_product_response(product),
+            data=await to_product_response(
+                product=product,
+                s3_service=s3_service,
+            ),
         )
 
     except ValidationError as exc:
@@ -149,6 +194,7 @@ async def list_products(
         le=PaginationEnum.MAX_PAGE_SIZE,
     ),
     db: AsyncSession = Depends(get_db),
+    s3_service: S3Service = Depends(S3Service),
 ) -> PaginatedResponse[ProductResponse]:
     product_service = ProductService(
         db=db,
@@ -167,7 +213,10 @@ async def list_products(
         page_size=page_size,
     )
 
-    items = [to_product_response(product) for product in products]
+    items = await to_product_responses(
+        products=products,
+        s3_service=s3_service,
+    )
 
     total_pages = product_service.calculate_total_pages(
         total=total,
@@ -196,6 +245,7 @@ async def list_products(
 async def get_product(
     id: UUID,
     db: AsyncSession = Depends(get_db),
+    s3_service: S3Service = Depends(S3Service),
 ) -> ApiResponse[ProductResponse]:
     product_service = ProductService(
         db=db,
@@ -206,7 +256,11 @@ async def get_product(
     )
 
     return ApiResponse(
-        message="Product retrieved successfully", data=to_product_response(product)
+        message="Product retrieved successfully",
+        data=await to_product_response(
+            product=product,
+            s3_service=s3_service,
+        ),
     )
 
 
@@ -260,6 +314,7 @@ async def update_product(
     primary_image_id: Annotated[UUID | None, Form()] = None,
     images: Annotated[list[UploadFile] | None, File()] = None,
     db: AsyncSession = Depends(get_db),
+    s3_service: S3Service = Depends(S3Service),
 ) -> ApiResponse[ProductResponse]:
 
     try:
@@ -305,7 +360,10 @@ async def update_product(
 
         return ApiResponse(
             message="Product updated successfully",
-            data=to_product_response(product),
+            data=await to_product_response(
+                product=product,
+                s3_service=s3_service,
+            ),
         )
 
     except ValidationError as exc:

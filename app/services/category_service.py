@@ -23,6 +23,6 @@ class CategoryService(BaseService[Category]):
             page_size=page_size,
         )
 
-        category = await self.category_repo.get_all(search=search)
+        category_stmt = self.category_repo.get_all(search=search)
 
-        return await self.paginate(category, page=page, page_size=page_size)
+        return await self.paginate(category_stmt, page=page, page_size=page_size)

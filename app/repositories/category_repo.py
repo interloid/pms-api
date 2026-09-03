@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.category_model import Category
@@ -20,8 +20,7 @@ class CategoryRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_all(self, search: str | None = None) -> list[Category]:
-
+    def get_all(self, search: str | None = None) -> Select[tuple[Category]]:
         stmt = select(Category)
 
         if search:

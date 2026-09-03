@@ -14,7 +14,7 @@ class S3Service:
 
     async def upload_file(
         self, file: BinaryIO, object_key: str, content_type: str
-    ) -> str:
+    ) -> None:
 
         session = aioboto3.Session(
             aws_access_key_id=self.access_key_id,
@@ -30,7 +30,6 @@ class S3Service:
                     "ContentType": content_type,
                 },
             )
-        return self.build_url(object_key)
 
     async def delete_file(self, object_key: str) -> None:
 
@@ -45,5 +44,25 @@ class S3Service:
                 Key=object_key,
             )
 
-    def build_url(self, object_key: str) -> str:
-        return f"https://{self.bucket_name}.s3.{self.region}.amazonaws.com/{object_key}"
+    async def generate_presigned_urls(
+        self, object_keys: list[str], expires_in: int = 3600
+    ) -> dict[str, str]:
+        if not object_keys:
+            return {}
+
+        session = aioboto3.Session(
+            aws_access_key_id=self.access_key_id,
+            aws_secret_access_key=self.secret_access_key,
+        )
+
+        async with session.client("s3", region_name=self.region) as s3:
+            presigned_urls: dict[str, str] = {}
+
+            for object_key in object_keys:
+                presigned_urls[object_key] = await s3.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self.bucket_name, "Key": object_key},
+                    ExpiresIn=expires_in,
+                )
+
+            return presigned_urls

@@ -6,20 +6,15 @@ import pytest
 from app.core.s3 import S3Service
 
 
-def test_build_url_returns_s3_url():
+@pytest.mark.asyncio
+async def test_generate_presigned_urls_returns_empty_mapping_without_client():
     service = S3Service()
 
-    service.bucket_name = "my-product-bucket"
-    service.region = "ap-south-1"
+    with patch("app.core.s3.aioboto3.Session") as session:
+        result = await service.generate_presigned_urls(object_keys=[])
 
-    result = service.build_url(
-        "products/123/images/image.jpg",
-    )
-
-    assert result == (
-        "https://my-product-bucket.s3.ap-south-1.amazonaws.com/"
-        "products/123/images/image.jpg"
-    )
+    assert result == {}
+    session.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -59,7 +54,7 @@ async def test_upload_file_uploads_file_to_s3():
             content_type=content_type,
         )
 
-    assert result == service.build_url(object_key)
+    assert result is None
 
     session.client.assert_called_once_with(
         "s3",
@@ -73,6 +68,52 @@ async def test_upload_file_uploads_file_to_s3():
         ExtraArgs={
             "ContentType": "image/jpeg",
         },
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_presigned_urls_uses_one_client_for_all_keys():
+    service = S3Service()
+    service.bucket_name = "my-product-bucket"
+    service.region = "ap-south-1"
+    service.access_key_id = "access-key"
+    service.secret_access_key = "secret-key"
+
+    object_keys = ["products/first.jpg", "products/second.jpg"]
+    s3_client = MagicMock()
+    s3_client.generate_presigned_url = AsyncMock(
+        side_effect=[
+            "https://signed.example/first.jpg",
+            "https://signed.example/second.jpg",
+        ]
+    )
+    client_context = MagicMock()
+    client_context.__aenter__ = AsyncMock(return_value=s3_client)
+    client_context.__aexit__ = AsyncMock(return_value=None)
+    session = MagicMock()
+    session.client.return_value = client_context
+
+    with patch("app.core.s3.aioboto3.Session", return_value=session):
+        result = await service.generate_presigned_urls(
+            object_keys=object_keys,
+            expires_in=900,
+        )
+
+    assert result == {
+        "products/first.jpg": "https://signed.example/first.jpg",
+        "products/second.jpg": "https://signed.example/second.jpg",
+    }
+    session.client.assert_called_once_with("s3", region_name="ap-south-1")
+    assert s3_client.generate_presigned_url.await_count == 2
+    s3_client.generate_presigned_url.assert_any_await(
+        "get_object",
+        Params={"Bucket": "my-product-bucket", "Key": "products/first.jpg"},
+        ExpiresIn=900,
+    )
+    s3_client.generate_presigned_url.assert_any_await(
+        "get_object",
+        Params={"Bucket": "my-product-bucket", "Key": "products/second.jpg"},
+        ExpiresIn=900,
     )
 
 
