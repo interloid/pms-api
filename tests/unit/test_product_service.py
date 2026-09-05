@@ -21,7 +21,7 @@ from app.services.product_service import ProductService
 async def test_get_product_returns_product():
     db = MagicMock()
 
-    service = ProductService(db)
+    service = ProductService(db, s3_service=MagicMock())
 
     product_id = uuid4()
     product = Product(
@@ -47,7 +47,7 @@ async def test_get_product_returns_product():
 async def test_get_product_raises_not_found_when_product_does_not_exist():
     db = MagicMock()
 
-    service = ProductService(db)
+    service = ProductService(db, s3_service=MagicMock())
 
     product_id = uuid4()
 
@@ -71,7 +71,7 @@ async def test_get_product_raises_not_found_when_product_does_not_exist():
 async def test_delete_product_raises_not_found_when_product_does_not_exist():
     db = MagicMock()
 
-    service = ProductService(db)
+    service = ProductService(db, s3_service=MagicMock())
 
     product_id = uuid4()
 
@@ -95,6 +95,69 @@ async def test_delete_product_raises_not_found_when_product_does_not_exist():
     service.product_repo.delete.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_delete_product_commits_before_deleting_s3_objects():
+    events = []
+    db = MagicMock()
+    db.commit = AsyncMock(side_effect=lambda: events.append("commit"))
+    service = ProductService(db, s3_service=MagicMock())
+    product_id = uuid4()
+    product = Product(id=product_id, name="iPhone 15", sku="IPHONE-15")
+    product.images = [
+        ProductImage(object_key="products/image1.jpg"),
+        ProductImage(object_key="products/image2.jpg"),
+    ]
+
+    service.product_repo.get_by_id = AsyncMock(return_value=product)
+    service.product_repo.delete = AsyncMock(side_effect=lambda **_: events.append("db"))
+    service.product_image_service.s3_service.delete_file = AsyncMock(
+        side_effect=lambda **_: events.append("s3")
+    )
+
+    await service.delete_product(product_id=product_id)
+
+    assert events == ["db", "commit", "s3", "s3"]
+    service.product_repo.delete.assert_awaited_once_with(product=product)
+    service.product_image_service.s3_service.delete_file.assert_any_await(
+        object_key="products/image1.jpg"
+    )
+    service.product_image_service.s3_service.delete_file.assert_any_await(
+        object_key="products/image2.jpg"
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_product_does_not_delete_s3_objects_when_commit_fails():
+    db = MagicMock()
+    db.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
+    service = ProductService(db, s3_service=MagicMock())
+    product_id = uuid4()
+    product = Product(id=product_id, name="iPhone 15", sku="IPHONE-15")
+    product.images = [ProductImage(object_key="products/image.jpg")]
+
+    service.product_repo.get_by_id = AsyncMock(return_value=product)
+    service.product_repo.delete = AsyncMock()
+    service.product_image_service.s3_service.delete_file = AsyncMock()
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await service.delete_product(product_id=product_id)
+
+    service.product_image_service.s3_service.delete_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_s3_continues_when_one_delete_fails():
+    service = object.__new__(ProductService)
+    service.product_image_service = MagicMock()
+    service.product_image_service.s3_service.delete_file = AsyncMock(
+        side_effect=[RuntimeError("S3 unavailable"), None]
+    )
+
+    await service._cleanup_s3(["products/image1.jpg", "products/image2.jpg"])
+
+    assert service.product_image_service.s3_service.delete_file.await_count == 2
+
+
 # Product not found
 
 
@@ -102,7 +165,7 @@ async def test_delete_product_raises_not_found_when_product_does_not_exist():
 async def test_update_product_raises_not_found_when_product_does_not_exist():
     db = MagicMock()
 
-    service = ProductService(db)
+    service = ProductService(db, s3_service=MagicMock())
 
     product_id = uuid4()
 
@@ -140,7 +203,7 @@ async def test_update_product_updates_product():
     db = MagicMock()
     db.refresh = AsyncMock()
 
-    service = ProductService(db)
+    service = ProductService(db, s3_service=MagicMock())
 
     product_id = uuid4()
 
@@ -198,7 +261,7 @@ async def test_update_product_updates_product():
 @pytest.mark.asyncio
 async def test_update_product_rejects_total_images_above_limit():
     db = MagicMock()
-    service = ProductService(db)
+    service = ProductService(db, s3_service=MagicMock())
     product_id = uuid4()
     product = Product(
         id=product_id,
@@ -234,7 +297,7 @@ async def test_update_product_rejects_total_images_above_limit():
 async def test_update_product_raises_conflict_when_sku_already_exists():
     db = MagicMock()
 
-    service = ProductService(db)
+    service = ProductService(db, s3_service=MagicMock())
 
     product_id = uuid4()
     existing_product_id = uuid4()
@@ -292,7 +355,7 @@ async def test_update_product_raises_conflict_when_sku_already_exists():
 async def test_update_product_raises_not_found_when_category_does_not_exist():
     db = MagicMock()
 
-    service = ProductService(db)
+    service = ProductService(db, s3_service=MagicMock())
 
     product_id = uuid4()
 
@@ -340,7 +403,7 @@ async def test_update_product_updates_category():
     db = MagicMock()
     db.refresh = AsyncMock()
 
-    service = ProductService(db)
+    service = ProductService(db, s3_service=MagicMock())
 
     product_id = uuid4()
     category_id = uuid4()
@@ -402,7 +465,7 @@ async def test_update_product_updates_category():
 async def test_list_products_returns_products_and_total():
     db = MagicMock()
 
-    service = ProductService(db)
+    service = ProductService(db, s3_service=MagicMock())
 
     products = [
         Product(

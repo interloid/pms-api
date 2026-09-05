@@ -1,11 +1,7 @@
 from fastapi import APIRouter, Cookie, Depends, Response, status
-from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_auth_service, get_current_user
 from app.core.settings import settings
-from app.db.redis import get_redis
-from app.db.session import get_db
 from app.exceptions.custom import InternalServerException
 from app.exceptions.global_exception import AUTH_ERROR_RESPONSES
 from app.models.user_model import User
@@ -32,11 +28,8 @@ router = APIRouter(
 async def login(
     login_data: LoginRequest,
     response: Response,
-    redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ):
-    service = AuthService(db=db, redis=redis)
-
     (result, raw_refresh_token, refresh_max_age) = await service.login(login_data)
 
     if result.data is None:
@@ -68,14 +61,8 @@ async def refresh_token(
         default=None,
         alias=settings.REFRESH_TOKEN_COOKIE_NAME,
     ),
-    redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ) -> ApiResponse[TokenResponse]:
-    service = AuthService(
-        db=db,
-        redis=redis,
-    )
-
     (
         result,
         new_raw_refresh_token,
@@ -108,10 +95,8 @@ async def logout_current_device(
         default=None,
         alias=settings.REFRESH_TOKEN_COOKIE_NAME,
     ),
-    redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ) -> None:
-    service = AuthService(db=db, redis=redis)
     await service.logout_current_device(refresh_token)
 
     response.delete_cookie(
@@ -131,10 +116,8 @@ async def logout_current_device(
 async def logout_all_devices(
     response: Response,
     current_user: User = Depends(get_current_user),
-    redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ) -> None:
-    service = AuthService(db=db, redis=redis)
     await service.logout_all_devices(user_id=current_user.id)
 
     response.delete_cookie(

@@ -1,5 +1,5 @@
+import asyncio
 import hashlib
-from typing import BinaryIO
 from uuid import UUID, uuid4
 
 from fastapi import UploadFile
@@ -25,7 +25,7 @@ class ProductImageService:
         self,
         *,
         product_id: UUID,
-        file: BinaryIO,
+        data: bytes,
         filename: str,
         content_type: str,
         content_hash: str | None = None,
@@ -33,12 +33,7 @@ class ProductImageService:
     ) -> ProductImage:
 
         if content_hash is None:
-            digest = hashlib.sha256()
-            file.seek(0)
-            while chunk := file.read(1024 * 1024):
-                digest.update(chunk)
-            file.seek(0)
-            content_hash = digest.hexdigest()
+            content_hash = hashlib.sha256(data).hexdigest()
 
         extension = filename.rsplit(".", 1)[-1] if "." in filename else ""
 
@@ -50,7 +45,7 @@ class ProductImageService:
 
         # url =
         await self.s3_service.upload_file(
-            file=file,
+            data=data,
             object_key=object_key,
             content_type=content_type,
         )
@@ -94,9 +89,10 @@ class ProductImageService:
 
         try:
             for image, content_hash in zip(images, content_hashes, strict=True):
+                data = await image.read()
                 product_image = await self.upload_image(
                     product_id=product_id,
-                    file=image.file,
+                    data=data,
                     filename=image.filename or "image",
                     content_type=image.content_type or "application/octet-stream",
                     content_hash=content_hash,
@@ -153,6 +149,17 @@ class ProductImageService:
 
         return image
 
+    async def get_images(
+        self,
+        *,
+        image_ids: list[UUID],
+        product_id: UUID,
+    ) -> list[ProductImage]:
+        return await self.product_image_repo.get_by_ids_and_product(
+            image_ids=image_ids,
+            product_id=product_id,
+        )
+
     async def get_product_images(self, *, product_id: UUID) -> list[ProductImage]:
 
         return await self.product_image_repo.get_by_product_id(
@@ -205,7 +212,18 @@ class ProductImageService:
             product_id=product_id,
         )
 
-        for image in images:
-            await self.s3_service.delete_file(
-                object_key=image.object_key,
-            )
+        results = await asyncio.gather(
+            *(
+                self.s3_service.delete_file(object_key=image.object_key)
+                for image in images
+            ),
+            return_exceptions=True,
+        )
+
+        for image, result in zip(images, results, strict=True):
+            if isinstance(result, Exception):
+                logger.error(
+                    "Failed to delete S3 object | object_key=%s | error=%s",
+                    image.object_key,
+                    result,
+                )

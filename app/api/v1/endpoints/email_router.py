@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, Request, Response
 from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_auth_service
 from app.core.settings import settings
 from app.db.redis import get_redis
-from app.db.session import get_db
 from app.exceptions.global_exception import AUTH_ERROR_RESPONSES
 from app.schemas.auth_schema import (
     LoginResponse,
@@ -20,22 +19,24 @@ router = APIRouter(
 )
 
 
-@router.post("/passcode/request")
+@router.post(
+    "/passcode/request",
+    response_model=ApiResponse[None],
+    responses=AUTH_ERROR_RESPONSES,
+)
 async def request_passcode(
     request: Request,
     login_data: PasscodeRequest,
     redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
-):
-    service = AuthService(db=db, redis=redis)
-
+    service: AuthService = Depends(get_auth_service),
+) -> ApiResponse[None]:
     await service.request_passcode(
         email=login_data.email,
-        client_ip=request.client.host or "unknown",
+        client_ip=request.client.host if request.client else "unknown",
         redis=redis,
     )
 
-    return ApiResponse(
+    return ApiResponse[None](
         message="Verification code sent to the email is registered.",
     )
 
@@ -49,10 +50,8 @@ async def verify_passcode(
     login_data: PasscodeVerifyRequest,
     response: Response,
     redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ) -> ApiResponse[LoginResponse]:
-
-    service = AuthService(db=db, redis=redis)
 
     (result, raw_refresh_token, refresh_max_age) = await service.verify_email_passcode(
         email=login_data.email,

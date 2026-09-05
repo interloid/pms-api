@@ -53,6 +53,8 @@ def build_google_client(
     oauth_client.get = AsyncMock(
         return_value=userinfo_response,
     )
+    oauth_client.__aenter__ = AsyncMock(return_value=oauth_client)
+    oauth_client.__aexit__ = AsyncMock(return_value=None)
 
     return oauth_client
 
@@ -462,6 +464,8 @@ async def test_oauth_callback_propagates_provider_failure(
             "OAuth provider unavailable",
         )
     )
+    provider_client.__aenter__ = AsyncMock(return_value=provider_client)
+    provider_client.__aexit__ = AsyncMock(return_value=None)
 
     monkeypatch.setattr(
         "app.services.auth_service.get_oauth_client",

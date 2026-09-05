@@ -5,12 +5,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.authorization import require_permission
+from app.api.dependencies import get_product_service
 from app.core.constants import PaginationEnum, PermissionEnum, ProductStatusEnum
-from app.core.s3 import S3Service
-from app.db.session import get_db
+from app.core.s3 import S3Service, get_s3_service
 from app.exceptions.custom import BadRequestException
 from app.exceptions.global_exception import CRUD_ERROR_RESPONSES
 from app.models.product_model import Product
@@ -102,11 +101,11 @@ async def create_product(
     category_name: Annotated[str, Form(...)],
     price: Annotated[Decimal, Form(...)],
     stock: Annotated[int, Form(...)],
-    status: Annotated[ProductStatusEnum, Form(...)],
+    product_status: Annotated[ProductStatusEnum | None, Form(alias="status")] = None,
     description: Annotated[str | None, Form()] = None,
-    images: Annotated[list[UploadFile], File()] = [],
-    db: AsyncSession = Depends(get_db),
-    s3_service: S3Service = Depends(S3Service),
+    images: Annotated[list[UploadFile] | None, File()] = None,
+    product_service: ProductService = Depends(get_product_service),
+    s3_service: S3Service = Depends(get_s3_service),
 ) -> ApiResponse[ProductResponse]:
 
     try:
@@ -116,29 +115,21 @@ async def create_product(
             category_name=category_name,
             price=price,
             stock=stock,
-            status=status,
+            status=product_status,
             description=description,
-        )
-
-        product_service = ProductService(db=db)
-
-        product = await product_service.create_product(
-            payload=payload,
-            images=images,
-        )
-
-        return ApiResponse(
-            message="Product created successfully",
-            data=await to_product_response(
-                product=product,
-                s3_service=s3_service,
-            ),
         )
 
     except ValidationError as exc:
         raise RequestValidationError(
             exc.errors(),
         ) from exc
+
+    await product_service.create_product(
+        payload=payload,
+        images=images or [],
+    )
+
+    return ApiResponse(message="Product created successfully")
 
 
 @router.get(
@@ -193,13 +184,9 @@ async def list_products(
         ge=1,
         le=PaginationEnum.MAX_PAGE_SIZE,
     ),
-    db: AsyncSession = Depends(get_db),
-    s3_service: S3Service = Depends(S3Service),
+    product_service: ProductService = Depends(get_product_service),
+    s3_service: S3Service = Depends(get_s3_service),
 ) -> PaginatedResponse[ProductResponse]:
-    product_service = ProductService(
-        db=db,
-    )
-
     products, total = await product_service.list_products(
         search=search,
         category_name=category_name,
@@ -244,13 +231,9 @@ async def list_products(
 )
 async def get_product(
     id: UUID,
-    db: AsyncSession = Depends(get_db),
-    s3_service: S3Service = Depends(S3Service),
+    product_service: ProductService = Depends(get_product_service),
+    s3_service: S3Service = Depends(get_s3_service),
 ) -> ApiResponse[ProductResponse]:
-    product_service = ProductService(
-        db=db,
-    )
-
     product = await product_service.get_product(
         product_id=id,
     )
@@ -308,68 +291,63 @@ async def update_product(
     category_name: Annotated[str | None, Form()] = None,
     price: Annotated[Decimal | None, Form()] = None,
     stock: Annotated[int | None, Form()] = None,
-    status: Annotated[ProductStatusEnum | None, Form()] = None,
+    product_status: Annotated[ProductStatusEnum | None, Form(alias="status")] = None,
     description: Annotated[str | None, Form()] = None,
     removed_image_ids: Annotated[str | None, Form()] = None,
     primary_image_id: Annotated[UUID | None, Form()] = None,
     images: Annotated[list[UploadFile] | None, File()] = None,
-    db: AsyncSession = Depends(get_db),
-    s3_service: S3Service = Depends(S3Service),
+    product_service: ProductService = Depends(get_product_service),
+    s3_service: S3Service = Depends(get_s3_service),
 ) -> ApiResponse[ProductResponse]:
 
+    parsed_removed_image_ids = parse_removed_image_ids(
+        removed_image_ids,
+    )
+    if (
+        primary_image_id is not None
+        and parsed_removed_image_ids
+        and primary_image_id in parsed_removed_image_ids
+    ):
+        raise BadRequestException(
+            message="Primary image cannot also be removed",
+        )
+
+    payload_data = {
+        field: value
+        for field, value in {
+            "name": name,
+            "sku": sku,
+            "category_name": category_name,
+            "price": price,
+            "stock": stock,
+            "status": product_status,
+            "description": description,
+        }.items()
+        if value is not None
+    }
+
     try:
-        parsed_removed_image_ids = parse_removed_image_ids(
-            removed_image_ids,
-        )
-        if (
-            primary_image_id is not None
-            and parsed_removed_image_ids
-            and primary_image_id in parsed_removed_image_ids
-        ):
-            raise BadRequestException(
-                message="Primary image cannot also be removed",
-            )
-
-        payload_data = {
-            field: value
-            for field, value in {
-                "name": name,
-                "sku": sku,
-                "category_name": category_name,
-                "price": price,
-                "stock": stock,
-                "status": status,
-                "description": description,
-            }.items()
-            if value is not None
-        }
-
         payload = ProductUpdate(**payload_data)
-
-        product_service = ProductService(
-            db=db,
-        )
-
-        product = await product_service.update_product(
-            product_id=id,
-            payload=payload,
-            images=images or [],
-            removed_image_ids=parsed_removed_image_ids,
-            primary_image_id=primary_image_id,
-        )
-
-        return ApiResponse(
-            message="Product updated successfully",
-            data=await to_product_response(
-                product=product,
-                s3_service=s3_service,
-            ),
-        )
-
     except ValidationError as exc:
         raise RequestValidationError(
             exc.errors(),
         ) from exc
+
+    product = await product_service.update_product(
+        product_id=id,
+        payload=payload,
+        images=images or [],
+        removed_image_ids=parsed_removed_image_ids,
+        primary_image_id=primary_image_id,
+    )
+
+    return ApiResponse(
+        message="Product updated successfully",
+        data=await to_product_response(
+            product=product,
+            s3_service=s3_service,
+        ),
+    )
 
 
 @router.delete(
@@ -380,12 +358,8 @@ async def update_product(
 )
 async def delete_product(
     id: UUID,
-    db: AsyncSession = Depends(get_db),
+    product_service: ProductService = Depends(get_product_service),
 ) -> Response:
-    product_service = ProductService(
-        db=db,
-    )
-
     await product_service.delete_product(
         product_id=id,
     )

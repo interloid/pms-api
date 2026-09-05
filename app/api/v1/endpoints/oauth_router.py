@@ -1,11 +1,8 @@
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import RedirectResponse
-from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_auth_service
 from app.core.settings import settings
-from app.db.redis import get_redis
-from app.db.session import get_db
 from app.exceptions.custom import InternalServerException
 from app.exceptions.global_exception import AUTH_ERROR_RESPONSES
 from app.services.auth_service import AuthService
@@ -39,14 +36,8 @@ def set_refresh_token_cookie(
 )
 async def omniauth(
     provider: str,
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
-):
-    service = AuthService(
-        db=db,
-        redis=redis,
-    )
-
+    service: AuthService = Depends(get_auth_service),
+) -> RedirectResponse:
     authorization_url = await service.start_oauth(
         provider=provider,
     )
@@ -65,14 +56,8 @@ async def omniauth_callback(
     provider: str,
     code: str,
     state: str,
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
-):
-    service = AuthService(
-        db=db,
-        redis=redis,
-    )
-
+    service: AuthService = Depends(get_auth_service),
+) -> RedirectResponse:
     (
         result,
         raw_refresh_token,

@@ -19,7 +19,6 @@ class ProductRepository:
         product: Product,
     ) -> Product:
         self.db.add(product)
-
         await self.db.flush()
 
         created_product = await self.get_by_id(

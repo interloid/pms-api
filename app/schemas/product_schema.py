@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_serializer, model_validator
 
 from app.core.constants import ProductStatusEnum
 from app.schemas.common import BaseSchema
@@ -20,13 +20,17 @@ class ProductCreate(BaseSchema):
     )
     category_name: str
     price: Decimal = Field(
-        ge=0,
+        ge=1,
     )
     stock: int = Field(
         ge=0,
     )
     status: ProductStatusEnum
     description: str | None = None
+
+    @field_serializer("price", when_used="json")
+    def serialize_price(self, value: Decimal) -> float:
+        return float(value)
 
 
 class ProductUpdate(BaseSchema):
@@ -43,7 +47,7 @@ class ProductUpdate(BaseSchema):
     category_name: str | None = None
     price: Decimal | None = Field(
         default=None,
-        ge=0,
+        ge=1,
     )
     stock: int | None = Field(
         default=None,
@@ -51,6 +55,10 @@ class ProductUpdate(BaseSchema):
     )
     status: ProductStatusEnum | None = None
     description: str | None = None
+
+    @field_serializer("price", when_used="json")
+    def serialize_price(self, value: Decimal) -> float:
+        return float(value)
 
     @model_validator(mode="after")
     def validate_update_fields(self):
@@ -81,3 +89,7 @@ class ProductResponse(BaseSchema):
     images: list[ProductImageResponse]
     created_at: datetime | None
     updated_at: datetime | None
+
+    @field_serializer("price", when_used="json")
+    def serialize_price(self, value: Decimal) -> float:
+        return float(value)

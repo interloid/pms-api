@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product_image_model import ProductImage
@@ -74,3 +74,29 @@ class ProductImageRepository:
     async def delete(self, image: ProductImage) -> None:
         await self.db.delete(image)
         await self.db.flush()
+
+    async def get_by_ids_and_product(
+        self,
+        image_ids: list[UUID],
+        product_id: UUID,
+    ) -> list[ProductImage]:
+
+        stmt = select(ProductImage).where(
+            ProductImage.id.in_(image_ids),
+            ProductImage.product_id == product_id,
+        )
+
+        result = await self.db.execute(stmt)
+
+        return list(result.scalars().all())
+
+    async def delete_by_ids_and_product(
+        self,
+        image_ids: list[UUID],
+        product_id: UUID,
+    ) -> None:
+        stmt = delete(ProductImage).where(
+            ProductImage.id.in_(image_ids),
+            ProductImage.product_id == product_id,
+        )
+        await self.db.execute(stmt)

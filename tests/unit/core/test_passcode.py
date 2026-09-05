@@ -35,6 +35,16 @@ def test_generate_passcode_preserves_leading_zeroes():
     assert passcode == "000123"
 
 
+def test_generate_passcode_uses_configured_length():
+    with (
+        patch.object(settings, "PASSCODE_LENGTH", 8),
+        patch("app.core.passcode.secrets.randbelow", return_value=123),
+    ):
+        passcode = generate_passcode()
+
+    assert passcode == "00000123"
+
+
 def test_get_passcode_key():
     email = "user@example.com"
 

@@ -6,6 +6,7 @@ from datetime import timedelta
 import jwt
 from pwdlib import PasswordHash
 from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from app.core.logging import get_logger
 from app.core.settings import settings
@@ -50,8 +51,12 @@ def hash_password(password: str) -> str:
     return _password_hash.hash(password)
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return _password_hash.verify(plain_password, hashed_password)
+async def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return await run_in_threadpool(
+        _password_hash.verify,
+        plain_password,
+        hashed_password,
+    )
 
 
 def create_access_token(data: dict) -> str:

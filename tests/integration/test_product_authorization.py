@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import RoleEnum
@@ -98,12 +99,17 @@ async def test_editor_can_create_product(
     response = await client.post("/api/v1/products", headers=headers, data=product_data)
 
     assert response.status_code == 201
-    print(response.status_code, response.json())
     response_data = response.json()
 
     assert response_data["success"] is True
-    assert response_data["data"]["sku"] == product_data["sku"]
-    assert response_data["data"]["category_name"] == category_name
+    assert response_data["message"] == "Product created successfully"
+    assert response_data["data"] is None
+
+    product_result = await db_session.execute(
+        select(Product).where(Product.sku == product_data["sku"])
+    )
+    created_product = product_result.scalar_one()
+    assert created_product.category_id == category.id
 
 
 @pytest.mark.asyncio

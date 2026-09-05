@@ -34,6 +34,7 @@ from app.exceptions.custom import (
     AppException,
     ConflictException,
     NotFoundException,
+    ServiceUnavailableException,
     TooManyRequestsException,
     UnauthorizedException,
 )
@@ -138,7 +139,7 @@ class AuthService:
                 logger.warning("Invalid email or password | email=%s", login_data.email)
                 raise UnauthorizedException(message="Invalid email or password")
 
-            if not verify_password(login_data.password, user.hashed_password):
+            if not await verify_password(login_data.password, user.hashed_password):
                 logger.warning("Invalid email or password | email=%s", login_data.email)
                 raise UnauthorizedException(message="Invalid email or password")
 
@@ -497,7 +498,7 @@ class AuthService:
                 )
 
                 await self.user_repo.create(user)
-            logger.info("User created Successfully | email=%s", email)
+            logger.info("User logged in Successfully | email=%s", email)
 
             (
                 login_response,
@@ -540,6 +541,15 @@ class AuthService:
                 )
                 raise NotFoundException(
                     message="OAuth provider not supported",
+                )
+
+            if config.client_secret is None:
+                logger.error(
+                    "OAuth provider is not configured | provider=%s",
+                    provider,
+                )
+                raise ServiceUnavailableException(
+                    message="OAuth provider is temporarily unavailable",
                 )
 
             state = generate_oauth_state()
@@ -608,7 +618,7 @@ class AuthService:
         provider: str,
         code: str,
         state: str,
-    ):
+    ) -> tuple[ApiResponse[LoginResponse], str, int]:
         try:
             await self.validate_oauth_state(
                 provider=provider,
@@ -623,34 +633,43 @@ class AuthService:
                     message="OAuth provider not supported",
                 )
 
-            client = get_oauth_client(provider)
-            logger.info(
-                "Exchanging OAuth code for token | provider=%s",
-                provider,
-            )
+            if config.client_secret is None:
+                logger.error(
+                    "OAuth provider is not configured | provider=%s",
+                    provider,
+                )
+                raise ServiceUnavailableException(
+                    message="OAuth provider is temporarily unavailable",
+                )
 
-            await client.fetch_token(
-                url=config.token_url,
-                code=code,
-                redirect_uri=config.redirect_uri,
-            )
+            async with get_oauth_client(provider) as client:
+                logger.info(
+                    "Exchanging OAuth code for token | provider=%s",
+                    provider,
+                )
 
-            logger.info(
-                "OAuth token exchange successful | provider=%s",
-                provider,
-            )
+                await client.fetch_token(
+                    url=config.token_url,
+                    code=code,
+                    redirect_uri=config.redirect_uri,
+                )
 
-            userinfo_response = await client.get(config.userinfo_url)
+                logger.info(
+                    "OAuth token exchange successful | provider=%s",
+                    provider,
+                )
 
-            logger.info(
-                "OAuth userinfo response | provider=%s status=%s",
-                provider,
-                userinfo_response.status_code,
-            )
+                userinfo_response = await client.get(config.userinfo_url)
 
-            userinfo_response.raise_for_status()
+                logger.info(
+                    "OAuth userinfo response | provider=%s status=%s",
+                    provider,
+                    userinfo_response.status_code,
+                )
 
-            userinfo = userinfo_response.json()
+                userinfo_response.raise_for_status()
+
+                userinfo = userinfo_response.json()
 
             if provider == "github":
                 provider_user_id = str(userinfo["id"])
