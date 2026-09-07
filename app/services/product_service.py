@@ -1,3 +1,5 @@
+import asyncio
+import hashlib
 from decimal import Decimal
 from uuid import UUID
 
@@ -42,14 +44,14 @@ class ProductService(BaseService[Product]):
 
     DEFAULT_SORT = "updated"
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, s3_service: S3Service) -> None:
         super().__init__(db)
 
         self.product_repo = ProductRepository(db)
         self.category_repo = CategoryRepository(db)
         self.product_image_service = ProductImageService(
             product_image_repo=ProductImageRepository(db),
-            s3_service=S3Service(),
+            s3_service=s3_service,
         )
 
     async def _validate_product_images(
@@ -58,7 +60,10 @@ class ProductService(BaseService[Product]):
     ) -> None:
 
         if len(images) > ProductImageConstants.MAX_IMAGES:
-            logger.warning(f"Maximum{ProductImageConstants.MAX_IMAGES} are not allowed")
+            logger.warning(
+                "Maximum %s images are allowed",
+                ProductImageConstants.MAX_IMAGES,
+            )
             raise BadRequestException(
                 message=(
                     f"Maximum {ProductImageConstants.MAX_IMAGES} images are allowed"
@@ -68,7 +73,8 @@ class ProductService(BaseService[Product]):
         for image in images:
             if not image.filename:
                 logger.warning(
-                    "Image filename is required | filename=%s", f"{image.filename}"
+                    "Image filename is required | filename=%s",
+                    image.filename,
                 )
                 raise BadRequestException(
                     message="Image filename is required",
@@ -76,10 +82,8 @@ class ProductService(BaseService[Product]):
 
             if not image.content_type:
                 logger.warning(
-                    f"Content type could not be determined for"
-                    f"{image.filename}'"
-                    "content_type=%s",
-                    image.content_type,
+                    "Content type could not be determined | filename=%s",
+                    image.filename,
                 )
                 raise BadRequestException(
                     message=(
@@ -89,7 +93,8 @@ class ProductService(BaseService[Product]):
 
             if image.content_type not in ProductImageConstants.ALLOWED_CONTENT_TYPES:
                 logger.warning(
-                    "Unsupported image type content_type=%s", f"{image.content_type}"
+                    "Unsupported image type | content_type=%s",
+                    image.content_type,
                 )
                 raise BadRequestException(
                     message=(
@@ -98,14 +103,19 @@ class ProductService(BaseService[Product]):
                     ),
                 )
             if image.size is None:
-                logger.warning("Could not determine size for size=%s", f"{image.size}")
+                logger.warning(
+                    "Could not determine image size | filename=%s",
+                    image.filename,
+                )
                 raise BadRequestException(
                     message=(f"Could not determine size for '{image.filename}'"),
                 )
 
             if image.size > ProductImageConstants.MAX_FILE_SIZE:
                 logger.warning(
-                    "Image exceeds the maximum size of 5 MB size=%s", f"{image.size}"
+                    "Image exceeds maximum size | filename=%s | size=%s",
+                    image.filename,
+                    image.size,
                 )
                 raise BadRequestException(
                     message=(
@@ -114,22 +124,59 @@ class ProductService(BaseService[Product]):
                 )
 
     async def _cleanup_s3(self, object_keys: list[str]) -> None:
-        for object_key in object_keys:
-            try:
-                await self.product_image_service.s3_service.delete_file(
+        if not object_keys:
+            return
+        results = await asyncio.gather(
+            *[
+                self.product_image_service.s3_service.delete_file(
                     object_key=object_key,
                 )
-            except Exception:
-                logger.exception(
-                    "Failed to clean up S3 object | object_key=%s",
+                for object_key in object_keys
+            ],
+            return_exceptions=True,
+        )
+        for object_key, result in zip(
+            object_keys,
+            results,
+            strict=True,
+        ):
+            if isinstance(result, Exception):
+                logger.error(
+                    "Failed to clean up S3 object | object_key=%s | error=%s",
                     object_key,
+                    result,
                 )
+
+    async def _hash_product_images(
+        self,
+        images: list[UploadFile],
+    ) -> list[str]:
+        """Hash uploads and leave every stream ready for the S3 upload."""
+        content_hashes: list[str] = []
+
+        for image in images:
+            digest = hashlib.sha256()
+            await image.seek(0)
+
+            while chunk := await image.read(1024 * 1024):
+                digest.update(chunk)
+
+            await image.seek(0)
+            content_hashes.append(digest.hexdigest())
+
+        if len(content_hashes) != len(set(content_hashes)):
+            raise ConflictException(
+                message="Duplicate images are not allowed",
+            )
+
+        return content_hashes
 
     async def create_product(
         self, payload: ProductCreate, images: list[UploadFile]
     ) -> Product:
 
         await self._validate_product_images(images)
+        content_hashes = await self._hash_product_images(images)
 
         existing_product = await self.product_repo.get_by_sku(sku=payload.sku)
 
@@ -164,12 +211,16 @@ class ProductService(BaseService[Product]):
                 product=product,
             )
 
-            for index, image in enumerate(images):
+            for index, (image, content_hash) in enumerate(
+                zip(images, content_hashes, strict=True)
+            ):
+                data = await image.read()
                 product_image = await self.product_image_service.upload_image(
                     product_id=product.id,
-                    file=image.file,
+                    data=data,
                     filename=image.filename or "image",
                     content_type=image.content_type or "application/octet-stream",
+                    content_hash=content_hash,
                     is_primary=(index == 0),
                 )
 
@@ -185,20 +236,18 @@ class ProductService(BaseService[Product]):
 
             return product
 
+        except IntegrityError as exc:
+            await self.db.rollback()
+            await self._cleanup_s3(uploaded_object_keys)
+            raise ConflictException(
+                message=(
+                    "Product could not be created because of a conflicting resource"
+                ),
+            ) from exc
+
         except Exception:
             await self.db.rollback()
-
-            for object_key in uploaded_object_keys:
-                try:
-                    await self.product_image_service.s3_service.delete_file(
-                        object_key=object_key,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to clean up S3 object after "
-                        "product creation failure | object_key=%s",
-                        object_key,
-                    )
+            await self._cleanup_s3(uploaded_object_keys)
             raise
 
     async def get_product(self, product_id: UUID) -> Product:
@@ -225,11 +274,6 @@ class ProductService(BaseService[Product]):
         page: int = 1,
         page_size: int = 10,
     ) -> tuple[list[Product], int]:
-
-        self.validate_pagination(
-            page=page,
-            page_size=page_size,
-        )
 
         if min_price is not None and max_price is not None and min_price > max_price:
             logger.warning(
@@ -369,6 +413,17 @@ class ProductService(BaseService[Product]):
                 ),
             )
 
+        content_hashes = await self._hash_product_images(images)
+        retained_hashes = {
+            image.content_hash
+            for image in product.images
+            if image.id not in removed_image_id_set and image.content_hash is not None
+        }
+        if retained_hashes.intersection(content_hashes):
+            raise ConflictException(
+                message="Duplicate images are not allowed",
+            )
+
         updates = payload.model_dump(exclude_unset=True)
 
         if "sku" in updates and updates["sku"] != product.sku:
@@ -412,22 +467,32 @@ class ProductService(BaseService[Product]):
             )
 
             if removed_image_ids:
-                for image_id in removed_image_ids:
-                    image = await self.product_image_service.get_image(
-                        image_id=image_id,
-                        product_id=product_id,
+                images_to_remove = await self.product_image_service.get_images(
+                    image_ids=removed_image_ids,
+                    product_id=product_id,
+                )
+
+                found_ids = {image.id for image in images_to_remove}
+                missing_ids = set(removed_image_ids) - found_ids
+
+                if missing_ids:
+                    raise NotFoundException(
+                        message="One or more product images were not found",
                     )
 
-                    images_to_delete.append(image.object_key)
+                images_to_delete.extend(image.object_key for image in images_to_remove)
 
-                    await self.product_image_service.product_image_repo.delete(
-                        image=image
-                    )
+                image_repo = self.product_image_service.product_image_repo
+                await image_repo.delete_by_ids_and_product(
+                    image_ids=removed_image_ids,
+                    product_id=product_id,
+                )
 
             if images:
                 uploaded_images = await self.product_image_service.add_images(
                     product_id=product.id,
                     images=images,
+                    content_hashes=content_hashes,
                 )
                 uploaded_object_keys.extend(
                     image.object_key for image in uploaded_images
@@ -451,6 +516,7 @@ class ProductService(BaseService[Product]):
             return product
 
         except IntegrityError as exc:
+            await self.db.rollback()
             await self._cleanup_s3(uploaded_object_keys)
 
             logger.warning(
@@ -463,6 +529,7 @@ class ProductService(BaseService[Product]):
             ) from exc
 
         except Exception:
+            await self.db.rollback()
             await self._cleanup_s3(uploaded_object_keys)
             raise
 
@@ -476,8 +543,9 @@ class ProductService(BaseService[Product]):
             logger.warning("product not found product_id=%s", product_id)
             raise NotFoundException(message="Product not found")
 
-        await self.product_image_service.delete_by_product_id(
-            product_id=product_id,
-        )
+        object_keys = [image.object_key for image in product.images]
 
         await self.product_repo.delete(product=product)
+        await self.db.commit()
+
+        await self._cleanup_s3(object_keys)

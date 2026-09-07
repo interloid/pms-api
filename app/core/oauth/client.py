@@ -9,6 +9,9 @@ def get_oauth_client(provider: str) -> AsyncOAuth2Client:
     if config is None:
         raise ValueError(f"Unsupported OAuth provider: {provider}")
 
+    if config.client_secret is None:
+        raise RuntimeError(f"OAuth provider is not configured: {provider}")
+
     return AsyncOAuth2Client(
         client_id=config.client_id,
         client_secret=config.client_secret,

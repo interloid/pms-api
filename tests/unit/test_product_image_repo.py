@@ -18,7 +18,6 @@ async def test_create_returns_image():
     image = ProductImage(
         id=uuid4(),
         product_id=uuid4(),
-        url="https://example.com/iphone.jpg",
         object_key="products/iphone.jpg",
         is_primary=False,
     )
@@ -43,7 +42,6 @@ async def test_get_by_id_returns_image():
     image = ProductImage(
         id=image_id,
         product_id=uuid4(),
-        url="https://example.com/iphone.jpg",
         object_key="products/iphone.jpg",
         is_primary=False,
     )
@@ -100,7 +98,6 @@ async def test_get_by_id_and_product_returns_image():
     image = ProductImage(
         id=image_id,
         product_id=product_id,
-        url="https://example.com/iphone.jpg",
         object_key="products/iphone.jpg",
         is_primary=False,
     )
@@ -160,14 +157,12 @@ async def test_get_by_product_id_returns_images():
         ProductImage(
             id=uuid4(),
             product_id=product_id,
-            url="https://example.com/1.jpg",
             object_key="products/1.jpg",
             is_primary=True,
         ),
         ProductImage(
             id=uuid4(),
             product_id=product_id,
-            url="https://example.com/2.jpg",
             object_key="products/2.jpg",
             is_primary=False,
         ),
@@ -228,7 +223,6 @@ async def test_get_primary_by_product_id_returns_image():
     image = ProductImage(
         id=uuid4(),
         product_id=product_id,
-        url="https://example.com/primary.jpg",
         object_key="products/primary.jpg",
         is_primary=True,
     )
@@ -302,7 +296,6 @@ async def test_set_primary_unsets_previous_primary_and_sets_image():
     image = ProductImage(
         id=uuid4(),
         product_id=uuid4(),
-        url="https://example.com/primary.jpg",
         object_key="products/primary.jpg",
         is_primary=False,
     )
@@ -337,7 +330,6 @@ async def test_delete_removes_image():
     image = ProductImage(
         id=uuid4(),
         product_id=uuid4(),
-        url="https://example.com/iphone.jpg",
         object_key="products/iphone.jpg",
         is_primary=False,
     )

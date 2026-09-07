@@ -1,4 +1,3 @@
-from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -12,14 +11,12 @@ from app.services.product_image_service import ProductImageService
 @pytest.mark.asyncio
 async def test_upload_image_creates_product_image():
     product_id = uuid4()
-    file = BytesIO(b"fake image")
+    data = b"fake image"
 
     repo = MagicMock()
     s3_service = MagicMock()
 
-    s3_service.upload_file = AsyncMock(
-        return_value="https://example.com/image.jpg",
-    )
+    s3_service.upload_file = AsyncMock()
 
     created_image = MagicMock()
 
@@ -34,7 +31,7 @@ async def test_upload_image_creates_product_image():
 
     result = await service.upload_image(
         product_id=product_id,
-        file=file,
+        data=data,
         filename="iphone.jpg",
         content_type="image/jpeg",
     )
@@ -49,14 +46,12 @@ async def test_upload_image_creates_product_image():
 @pytest.mark.asyncio
 async def test_upload_image_generates_object_key_with_extension():
     product_id = uuid4()
-    file = BytesIO(b"fake image")
+    data = b"fake image"
 
     repo = MagicMock()
     s3_service = MagicMock()
 
-    s3_service.upload_file = AsyncMock(
-        return_value="https://example.com/image.jpg",
-    )
+    s3_service.upload_file = AsyncMock()
 
     repo.create = AsyncMock(
         side_effect=lambda image: image,
@@ -69,7 +64,7 @@ async def test_upload_image_generates_object_key_with_extension():
 
     result = await service.upload_image(
         product_id=product_id,
-        file=file,
+        data=data,
         filename="iphone.jpg",
         content_type="image/jpeg",
     )
@@ -83,7 +78,7 @@ async def test_upload_image_generates_object_key_with_extension():
     assert object_key.endswith(".jpg")
 
     s3_service.upload_file.assert_awaited_once_with(
-        file=file,
+        data=data,
         object_key=object_key,
         content_type="image/jpeg",
     )
@@ -92,14 +87,12 @@ async def test_upload_image_generates_object_key_with_extension():
 @pytest.mark.asyncio
 async def test_upload_image_generates_object_key_without_extension():
     product_id = uuid4()
-    file = BytesIO(b"fake image")
+    data = b"fake image"
 
     repo = MagicMock()
     s3_service = MagicMock()
 
-    s3_service.upload_file = AsyncMock(
-        return_value="https://example.com/image",
-    )
+    s3_service.upload_file = AsyncMock()
 
     repo.create = AsyncMock(
         side_effect=lambda image: image,
@@ -112,7 +105,7 @@ async def test_upload_image_generates_object_key_without_extension():
 
     result = await service.upload_image(
         product_id=product_id,
-        file=file,
+        data=data,
         filename="iphone",
         content_type="image/jpeg",
     )
@@ -132,7 +125,6 @@ async def test_get_image_returns_image():
     image = ProductImage(
         id=image_id,
         product_id=product_id,
-        url="https://example.com/image.jpg",
         object_key="products/image.jpg",
         is_primary=False,
     )
@@ -201,14 +193,12 @@ async def test_get_product_images_returns_images():
         ProductImage(
             id=uuid4(),
             product_id=product_id,
-            url="https://example.com/image1.jpg",
             object_key="products/image1.jpg",
             is_primary=True,
         ),
         ProductImage(
             id=uuid4(),
             product_id=product_id,
-            url="https://example.com/image2.jpg",
             object_key="products/image2.jpg",
             is_primary=False,
         ),
@@ -272,7 +262,6 @@ async def test_set_primary_image_sets_non_primary_image():
     image = ProductImage(
         id=image_id,
         product_id=product_id,
-        url="https://example.com/image.jpg",
         object_key="products/image.jpg",
         is_primary=False,
     )
@@ -316,7 +305,6 @@ async def test_set_primary_image_returns_image_when_already_primary():
     image = ProductImage(
         id=image_id,
         product_id=product_id,
-        url="https://example.com/image.jpg",
         object_key="products/image.jpg",
         is_primary=True,
     )
@@ -423,6 +411,29 @@ async def test_delete_by_product_id_successfully():
     s3_service.delete_file.assert_any_await(
         object_key="products/image2.jpg",
     )
+
+
+@pytest.mark.asyncio
+async def test_delete_by_product_id_continues_when_one_s3_delete_fails():
+    product_id = uuid4()
+    images = [
+        MagicMock(object_key="products/image1.jpg"),
+        MagicMock(object_key="products/image2.jpg"),
+    ]
+    product_image_repo = MagicMock()
+    product_image_repo.get_by_product_id = AsyncMock(return_value=images)
+    s3_service = MagicMock()
+    s3_service.delete_file = AsyncMock(
+        side_effect=[RuntimeError("S3 unavailable"), None]
+    )
+    service = ProductImageService(
+        product_image_repo=product_image_repo,
+        s3_service=s3_service,
+    )
+
+    await service.delete_by_product_id(product_id=product_id)
+
+    assert s3_service.delete_file.await_count == 2
 
 
 @pytest.mark.asyncio

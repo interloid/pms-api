@@ -8,7 +8,8 @@ from app.exceptions.custom import TooManyRequestsException
 
 
 def generate_passcode() -> str:
-    return f"{secrets.randbelow(1_000_000):06d}"
+    length = settings.PASSCODE_LENGTH
+    return f"{secrets.randbelow(10**length):0{length}d}"
 
 
 def get_passcode_key(email: str) -> str:

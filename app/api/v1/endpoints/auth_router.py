@@ -1,30 +1,22 @@
-from uuid import UUID
+from fastapi import APIRouter, Cookie, Depends, Response, status
 
-from fastapi import APIRouter, Cookie, Depends, Request, Response
-from fastapi.responses import RedirectResponse
-from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.api.dependencies import get_auth_service, get_current_user
 from app.core.settings import settings
-from app.db.redis import get_redis
-from app.db.session import get_db
-from app.exceptions.custom import (
-    InternalServerException,
-    UnauthorizedException,
-)
+from app.exceptions.custom import InternalServerException
 from app.exceptions.global_exception import AUTH_ERROR_RESPONSES
+from app.models.user_model import User
 from app.schemas.auth_schema import (
     LoginRequest,
     LoginResponse,
-    PasscodeRequest,
-    PasscodeVerifyRequest,
+    TokenResponse,
 )
 from app.schemas.response import ApiResponse
+from app.schemas.user_schema import UserResponse
 from app.services.auth_service import AuthService
 
 router = APIRouter(
     prefix="/auth",
-    tags=["Authentication"],
+    tags=["JWT Authentication"],
 )
 
 
@@ -36,212 +28,123 @@ router = APIRouter(
 async def login(
     login_data: LoginRequest,
     response: Response,
-    redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ):
-    service = AuthService(db=db, redis=redis)
-
-    result = await service.login(login_data)
+    (result, raw_refresh_token, refresh_max_age) = await service.login(login_data)
 
     if result.data is None:
         raise InternalServerException(
             message="Login response data is missing",
         )
 
-    if login_data.remember_me:
-        max_age = settings.REMEMBER_ME_EXPIRE_DAYS * 24 * 60 * 60
-    else:
-        max_age = settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60
-
     response.set_cookie(
-        key="session",
-        value=str(result.data.session_id),
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
+        value=raw_refresh_token,
         httponly=True,
         secure=True,
         samesite="none",
         path="/",
-        max_age=max_age,
+        max_age=refresh_max_age,
     )
 
     return result
 
 
-@router.post("/logout")
-async def logout(
+@router.post(
+    "/refresh",
+    response_model=ApiResponse[TokenResponse],
+    responses=AUTH_ERROR_RESPONSES,
+)
+async def refresh_token(
     response: Response,
-    session_id: str | None = Cookie(
+    refresh_token: str | None = Cookie(
         default=None,
-        alias="session",
+        alias=settings.REFRESH_TOKEN_COOKIE_NAME,
     ),
-    redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
-):
-    if session_id is not None:
-        try:
-            parsed_session_id = UUID(session_id)
-        except ValueError:
-            parsed_session_id = None
+    service: AuthService = Depends(get_auth_service),
+) -> ApiResponse[TokenResponse]:
+    (
+        result,
+        new_raw_refresh_token,
+        refresh_max_age,
+    ) = await service.refresh_token(
+        raw_refresh_token=refresh_token,
+    )
 
-        if parsed_session_id is not None:
-            service = AuthService(db=db, redis=redis)
-            await service.logout(parsed_session_id)
+    response.set_cookie(
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
+        value=new_raw_refresh_token,
+        max_age=refresh_max_age,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+    )
+
+    return result
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=AUTH_ERROR_RESPONSES,
+)
+async def logout_current_device(
+    response: Response,
+    refresh_token: str | None = Cookie(
+        default=None,
+        alias=settings.REFRESH_TOKEN_COOKIE_NAME,
+    ),
+    service: AuthService = Depends(get_auth_service),
+) -> None:
+    await service.logout_current_device(refresh_token)
 
     response.delete_cookie(
-        key="session",
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
         path="/",
         secure=True,
         httponly=True,
         samesite="none",
     )
 
-    return ApiResponse(
-        message="Logged out successfully",
-    )
 
-
-@router.get("/session")
-async def session(
-    session: str | None = Cookie(
-        default=None,
-        alias="session",
-    ),
-    redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
-):
-    if session is None:
-        raise UnauthorizedException(
-            message="Session cookie is missing",
-        )
-
-    try:
-        session_id = UUID(session)
-    except ValueError as exc:
-        raise UnauthorizedException(
-            message="Invalid session",
-        ) from exc
-
-    service = AuthService(db=db, redis=redis)
-
-    return await service.get_current_session(session_id)
-
-
-@router.post("/passcode/request")
-async def request_passcode(
-    request: Request,
-    login_data: PasscodeRequest,
-    redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
-):
-    service = AuthService(db=db, redis=redis)
-
-    await service.request_passcode(
-        email=login_data.email,
-        client_ip=request.client.host or "unknown",
-        redis=redis,
-    )
-
-    return ApiResponse(
-        message="Verification code sent to the email is registered.",
-    )
-
-
-@router.post("/passcode/verify")
-async def verify_passcode(
-    login_data: PasscodeVerifyRequest,
+@router.post(
+    "/logout-all",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=AUTH_ERROR_RESPONSES,
+)
+async def logout_all_devices(
     response: Response,
-    redis: Redis = Depends(get_redis),
-    db: AsyncSession = Depends(get_db),
-):
-    service = AuthService(db=db, redis=redis)
+    current_user: User = Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service),
+) -> None:
+    await service.logout_all_devices(user_id=current_user.id)
 
-    result = await service.verify_email_passcode(
-        email=login_data.email,
-        passcode=login_data.passcode,
-        redis=redis,
-    )
-
-    if result.data is None:
-        raise InternalServerException(
-            message="Login response data is missing",
-        )
-
-    response.set_cookie(
-        key="session",
-        value=str(result.data.session_id),
-        httponly=True,
-        secure=True,
-        samesite="none",
+    response.delete_cookie(
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
         path="/",
-        max_age=settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60,
-    )
-
-    return result
-
-
-@router.get(
-    "/{provider}",
-    responses=AUTH_ERROR_RESPONSES,
-)
-async def omniauth(
-    provider: str,
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
-):
-    service = AuthService(
-        db=db,
-        redis=redis,
-    )
-
-    authorization_url = await service.start_oauth(
-        provider=provider,
-    )
-
-    return RedirectResponse(
-        url=authorization_url,
-        status_code=302,
+        secure=True,
+        httponly=True,
+        samesite="none",
     )
 
 
 @router.get(
-    "/{provider}/callback",
+    "/me",
+    response_model=ApiResponse[UserResponse],
     responses=AUTH_ERROR_RESPONSES,
 )
-async def omniauth_callback(
-    provider: str,
-    code: str,
-    state: str,
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
+async def get_current_user_details(
+    current_user: User = Depends(get_current_user),
 ):
-    service = AuthService(
-        db=db,
-        redis=redis,
+    return ApiResponse[UserResponse](
+        message="Current user retrieved successfully",
+        data=UserResponse(
+            id=current_user.id,
+            email=current_user.email,
+            first_name=current_user.first_name,
+            last_name=current_user.last_name,
+            is_active=current_user.is_active,
+            role=current_user.role,
+        ),
     )
-
-    result = await service.oauth_callback(
-        provider=provider,
-        code=code,
-        state=state,
-    )
-
-    if result.data is None:
-        raise InternalServerException(message="OAuth session data is missing")
-
-    session_id = result.data["session_id"]
-
-    response = RedirectResponse(
-        url=settings.YOUR_REACT_URL,
-        status_code=302,
-    )
-
-    response.set_cookie(
-        key="session",
-        value=str(session_id),
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/",
-        max_age=settings.SESSION_EXPIRE_DAYS * 24 * 60 * 60,
-    )
-
-    return response

@@ -1,4 +1,5 @@
-from typing import BinaryIO
+import asyncio
+import hashlib
 from uuid import UUID, uuid4
 
 from fastapi import UploadFile
@@ -24,11 +25,15 @@ class ProductImageService:
         self,
         *,
         product_id: UUID,
-        file: BinaryIO,
+        data: bytes,
         filename: str,
         content_type: str,
+        content_hash: str | None = None,
         is_primary: bool = False,
     ) -> ProductImage:
+
+        if content_hash is None:
+            content_hash = hashlib.sha256(data).hexdigest()
 
         extension = filename.rsplit(".", 1)[-1] if "." in filename else ""
 
@@ -38,43 +43,59 @@ class ProductImageService:
             else f"products/{product_id}/images/{uuid4()}"
         )
 
-        url = await self.s3_service.upload_file(
-            file=file,
+        # url =
+        await self.s3_service.upload_file(
+            data=data,
             object_key=object_key,
             content_type=content_type,
         )
 
-        image = ProductImage(
-            product_id=product_id,
-            url=url,
-            object_key=object_key,
-            is_primary=False,
-        )
+        try:
+            image = ProductImage(
+                product_id=product_id,
+                # url=url,
+                object_key=object_key,
+                content_hash=content_hash,
+                is_primary=False,
+            )
 
-        image = await self.product_image_repo.create(image)
+            image = await self.product_image_repo.create(image)
 
-        if is_primary:
-            image = await self.product_image_repo.set_primary(image)
+            if is_primary:
+                image = await self.product_image_repo.set_primary(image)
 
-        return image
+            return image
+        except Exception:
+            try:
+                await self.s3_service.delete_file(object_key=object_key)
+            except Exception:
+                logger.exception(
+                    "Failed to clean up S3 object after database failure | "
+                    "object_key=%s",
+                    object_key,
+                )
+            raise
 
     async def add_images(
         self,
         *,
         product_id: UUID,
         images: list[UploadFile],
+        content_hashes: list[str],
     ) -> list[ProductImage]:
 
         uploaded_images: list[ProductImage] = []
         uploaded_object_keys: list[str] = []
 
         try:
-            for image in images:
+            for image, content_hash in zip(images, content_hashes, strict=True):
+                data = await image.read()
                 product_image = await self.upload_image(
                     product_id=product_id,
-                    file=image.file,
+                    data=data,
                     filename=image.filename or "image",
                     content_type=image.content_type or "application/octet-stream",
+                    content_hash=content_hash,
                 )
 
                 uploaded_images.append(product_image)
@@ -128,6 +149,17 @@ class ProductImageService:
 
         return image
 
+    async def get_images(
+        self,
+        *,
+        image_ids: list[UUID],
+        product_id: UUID,
+    ) -> list[ProductImage]:
+        return await self.product_image_repo.get_by_ids_and_product(
+            image_ids=image_ids,
+            product_id=product_id,
+        )
+
     async def get_product_images(self, *, product_id: UUID) -> list[ProductImage]:
 
         return await self.product_image_repo.get_by_product_id(
@@ -180,7 +212,18 @@ class ProductImageService:
             product_id=product_id,
         )
 
-        for image in images:
-            await self.s3_service.delete_file(
-                object_key=image.object_key,
-            )
+        results = await asyncio.gather(
+            *(
+                self.s3_service.delete_file(object_key=image.object_key)
+                for image in images
+            ),
+            return_exceptions=True,
+        )
+
+        for image, result in zip(images, results, strict=True):
+            if isinstance(result, Exception):
+                logger.error(
+                    "Failed to delete S3 object | object_key=%s | error=%s",
+                    image.object_key,
+                    result,
+                )

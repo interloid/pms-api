@@ -76,7 +76,7 @@ async def test_send_email_uses_smtp_settings():
     assert kwargs["hostname"] == settings.SMTP_HOST
     assert kwargs["port"] == settings.SMTP_PORT
     assert kwargs["username"] == settings.SMTP_USERNAME
-    assert kwargs["password"] == settings.SMTP_PASSWORD
+    assert kwargs["password"] == settings.SMTP_PASSWORD.get_secret_value()
     assert kwargs["start_tls"] == (settings.SMTP_START_TLS)
 
 

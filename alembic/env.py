@@ -6,16 +6,17 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import app.models  # noqa: F401
 from alembic import context
-from app.core import settings
+from app.core.settings import settings
 from app.db.base import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-database_url = settings.DATABASE_URL.replace("%", "%%")
+database_url = settings.DATABASE_URL.get_secret_value()
+# database_url = "postgresql+asyncpg://postgres:test@localhost:8080/postgres"
 config.set_main_option(
     "sqlalchemy.url",
-    database_url,
+    database_url.replace("%", "%%"),
 )
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
