@@ -151,7 +151,7 @@ class ProductService(BaseService[Product]):
         self,
         images: list[UploadFile],
     ) -> list[str]:
-        """Hash uploads and leave every stream ready for the S3 upload."""
+
         content_hashes: list[str] = []
 
         for image in images:

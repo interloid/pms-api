@@ -3,6 +3,7 @@ from typing import NoReturn
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
+from arq.connections import ArqRedis
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,15 +55,15 @@ from app.schemas.auth_schema import (
 )
 from app.schemas.response import ApiResponse
 from app.schemas.user_schema import UserResponse
-from app.services.email_services import send_passcode_email
 from app.utils.helpers import utc_now
 
 logger = get_logger(__name__)
 
 
 class AuthService:
-    def __init__(self, db: AsyncSession, redis: Redis):
+    def __init__(self, db: AsyncSession, redis: Redis, arq_pool: ArqRedis):
         self.db = db
+        self.arq_pool = arq_pool
         self.user_repo = UserRepository(db)
         self.refresh_token_repo = RefreshTokenRepository(db)
         self.user_identity_repo = UserIdentityRepository(db)
@@ -375,11 +376,13 @@ class AuthService:
             passcode=passcode,
         )
 
-        await send_passcode_email(
+        await self.arq_pool.enqueue_job(
+            "send_passcode_email_job",
             to_email=email,
             first_name=user.first_name if user else "User",
             passcode=passcode,
-            expiry_minutes=5,
+            expiry_minutes=settings.PASSCODE_EXPIRE_SECONDS // 60,
+            _expires=settings.PASSCODE_EXPIRE_SECONDS,
         )
 
     async def verify_email_passcode(

@@ -1,4 +1,5 @@
-from fastapi import Depends, Security
+from arq.connections import ArqRedis
+from fastapi import Depends, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import ExpiredSignatureError, InvalidTokenError
 from pydantic import ValidationError
@@ -22,11 +23,16 @@ bearer_schema = HTTPBearer(
 )
 
 
+def get_arq_pool(request: Request) -> ArqRedis:
+    return request.app.state.arq_pool
+
+
 def get_auth_service(
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
+    arq_pool: ArqRedis = Depends(get_arq_pool),
 ) -> AuthService:
-    return AuthService(db=db, redis=redis)
+    return AuthService(db=db, redis=redis, arq_pool=arq_pool)
 
 
 def get_product_service(
