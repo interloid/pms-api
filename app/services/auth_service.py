@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from typing import NoReturn
 from urllib.parse import urlencode
@@ -376,12 +377,25 @@ class AuthService:
             passcode=passcode,
         )
 
+        email_job_id = uuid4().hex
+        email_job_key = f"jobs:passcode-email:{email_job_id}"
+
+        email_data = {
+            "to_email": email,
+            "first_name": user.first_name if user else "User",
+            "passcode": passcode,
+            "expiry_minutes": settings.PASSCODE_EXPIRE_SECONDS // 60,
+        }
+
+        await redis.set(
+            email_job_key,
+            json.dumps(email_data),
+            ex=settings.PASSCODE_EXPIRE_SECONDS,
+        )
+
         await self.arq_pool.enqueue_job(
             "send_passcode_email_job",
-            to_email=email,
-            first_name=user.first_name if user else "User",
-            passcode=passcode,
-            expiry_minutes=settings.PASSCODE_EXPIRE_SECONDS // 60,
+            email_job_id,
             _expires=settings.PASSCODE_EXPIRE_SECONDS,
         )
 

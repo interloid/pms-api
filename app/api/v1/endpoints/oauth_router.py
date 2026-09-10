@@ -34,7 +34,7 @@ def set_refresh_token_cookie(
     "/{provider}",
     responses=AUTH_ERROR_RESPONSES,
 )
-async def omniauth(
+async def oauth(
     provider: str,
     service: AuthService = Depends(get_auth_service),
 ) -> RedirectResponse:
@@ -52,7 +52,7 @@ async def omniauth(
     "/{provider}/callback",
     responses=AUTH_ERROR_RESPONSES,
 )
-async def omniauth_callback(
+async def oauth_callback(
     provider: str,
     code: str,
     state: str,

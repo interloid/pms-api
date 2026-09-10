@@ -13,7 +13,7 @@ class S3Service:
     async def upload_file(
         self, data: bytes, object_key: str, content_type: str
     ) -> None:
-
+        print(repr(content_type), type(content_type))
         await self.client.put_object(
             Bucket=self.bucket_name,
             Key=object_key,

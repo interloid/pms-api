@@ -38,8 +38,13 @@ def get_auth_service(
 def get_product_service(
     db: AsyncSession = Depends(get_db),
     s3_service: S3Service = Depends(get_s3_service),
+    arq_pool: ArqRedis = Depends(get_arq_pool),
 ) -> ProductService:
-    return ProductService(db=db, s3_service=s3_service)
+    return ProductService(
+        db=db,
+        s3_service=s3_service,
+        arq_pool=arq_pool,
+    )
 
 
 async def get_current_user(
