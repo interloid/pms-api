@@ -221,20 +221,35 @@ class ProductService(BaseService[Product]):
                 zip(images, content_hashes, strict=True)
             ):
                 image_id = uuid4()
-                content_type: str = image.content_type or "application/octet-stream"
-                extension = (image.filename or "image").rsplit(".", 1)[-1].lower()
+
+                content_type = image.content_type
+                if content_type is None:
+                    raise BadRequestException(
+                        message="Image content type is required",
+                    )
+
+                extension = ProductImageConstants.EXTENSION_BY_CONTENT_TYPE.get(
+                    content_type
+                )
+
+                if extension is None:
+                    raise BadRequestException(
+                        message=f"Unsupported image type '{content_type}'",
+                    )
+
                 staging_key = (
                     f"staging/products/{product.id}/images/{image_id}.{extension}"
                 )
 
+                staging_object_keys.append(staging_key)
+
                 data = await image.read()
+
                 await self.product_image_service.s3_service.upload_file(
                     data=data,
                     object_key=staging_key,
                     content_type=content_type,
                 )
-
-                staging_object_keys.append(staging_key)
 
                 job_images.append(
                     ProductImageUploadPayload(
@@ -249,13 +264,12 @@ class ProductService(BaseService[Product]):
 
             await self.db.commit()
 
-            if job_images:
-                await self.arq_pool.enqueue_job(
-                    "upload_product_images",
-                    str(product.id),
-                    job_images,
-                    _expires=86_400,
-                )
+            await self.arq_pool.enqueue_job(
+                "upload_product_images",
+                str(product.id),
+                [image.model_dump(mode="json") for image in job_images],
+                _expires=86_400,
+            )
 
             product = await self.product_repo.get_by_id(
                 product_id=product.id,
@@ -269,16 +283,14 @@ class ProductService(BaseService[Product]):
 
         except IntegrityError as exc:
             await self.db.rollback()
-            await self._cleanup_s3(staging_key)
+            await self._cleanup_s3(staging_object_keys)
             raise ConflictException(
-                message=(
-                    "Product could not be created because of a conflicting resource"
-                ),
+                message=("Product already exists"),
             ) from exc
 
         except Exception:
             await self.db.rollback()
-            await self._cleanup_s3(staging_key)
+            await self._cleanup_s3(staging_object_keys)
             raise
 
     async def get_product(self, product_id: UUID) -> Product:
@@ -501,12 +513,6 @@ class ProductService(BaseService[Product]):
         staging_object_keys: list[str] = []
         job_images: list[ProductImageUploadPayload] = []
 
-        extension_by_content_type = {
-            "image/jpeg": "jpg",
-            "image/png": "png",
-            "image/webp": "webp",
-        }
-
         try:
             product = await self.product_repo.update(
                 product=product,
@@ -542,13 +548,26 @@ class ProductService(BaseService[Product]):
             for index, (image, content_hash) in enumerate(
                 zip(images, content_hashes, strict=True)
             ):
-                content_type = image.content_type or "application/octet-stream"
-                extension = extension_by_content_type[content_type]
                 image_id = uuid4()
+                content_type = image.content_type
+                if content_type is None:
+                    raise BadRequestException(
+                        message="Image content type is required",
+                    )
+                extension = ProductImageConstants.EXTENSION_BY_CONTENT_TYPE.get(
+                    content_type
+                )
+
+                if extension is None:
+                    raise BadRequestException(
+                        message=(f"Unsupported image type '{content_type}'"),
+                    )
 
                 staging_key = (
                     f"staging/products/{product.id}/images/{image_id}.{extension}"
                 )
+
+                staging_object_keys.append(staging_key)
 
                 data = await image.read()
 
@@ -557,8 +576,6 @@ class ProductService(BaseService[Product]):
                     object_key=staging_key,
                     content_type=content_type,
                 )
-
-                staging_object_keys.append(staging_key)
 
                 job_images.append(
                     ProductImageUploadPayload(

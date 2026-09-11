@@ -1,3 +1,4 @@
+from typing import Any
 from urllib.parse import unquote, urlsplit
 
 from arq.connections import RedisSettings
@@ -7,8 +8,12 @@ from app.core.settings import settings
 
 def build_arq_redis_settings() -> RedisSettings:
 
-    if settings.REDIS_URL:
-        parsed_url = urlsplit(settings.REDIS_URL)
+    redis_url = settings.REDIS_URL
+    if redis_url:
+        parsed_url = urlsplit(redis_url)
+        options: dict[str, Any] = parsed_url(
+            redis_url,
+        )
 
         if parsed_url.scheme not in {"redis", "rediss"}:
             raise ValueError("Redis url must use redis:// or rediss://")
@@ -16,7 +21,7 @@ def build_arq_redis_settings() -> RedisSettings:
         if parsed_url.hostname is None:
             raise ValueError("REDIS_URL must contain a hostname")
 
-        database = int(parsed_url.path.removeprefix("/") or "0")
+        database = int(options.get("db"), 0)
 
         return RedisSettings(
             host=parsed_url.hostname,
@@ -30,7 +35,7 @@ def build_arq_redis_settings() -> RedisSettings:
     return RedisSettings(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
-        database=0,
+        database=database,
         username=settings.REDIS_USERNAME or None,
         password=settings.REDIS_PASSWORD,
         ssl=False,

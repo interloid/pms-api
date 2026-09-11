@@ -10,7 +10,7 @@ from app.core.settings import settings
 from app.db.database import engine
 from app.db.session import SessionLocal
 from app.jobs.email_jobs import send_passcode_email_job
-from app.jobs.image_jobs import upload_product_images
+from app.jobs.image_jobs import IMAGE_JOB_MAX_TRIES, upload_product_images
 from app.jobs.refresh_token_jobs import cleanup_expired_refresh_tokens_jobs
 from app.jobs.s3_jobs import delete_s3_jobs
 
@@ -58,12 +58,6 @@ class WorkerSettings:
         upload_product_images,
     ]
 
-    redis_settings = ARQ_REDIS_SETTINGS
-    queue_name = ARQ_QUEUE_NAME
-
-    on_startup = startup
-    on_shutdown = shutdown
-
     cron_jobs = [
         cron(
             cleanup_expired_refresh_tokens_jobs,
@@ -74,8 +68,15 @@ class WorkerSettings:
         )
     ]
 
-    timezone = UTC
+    redis_settings = ARQ_REDIS_SETTINGS
+    queue_name = ARQ_QUEUE_NAME
 
-    max_tries = 5
+    max_tries = IMAGE_JOB_MAX_TRIES
     job_timeout = 300
     keep_result = 86_400
+    log_results = (False,)
+
+    on_startup = startup
+    on_shutdown = shutdown
+
+    timezone = UTC

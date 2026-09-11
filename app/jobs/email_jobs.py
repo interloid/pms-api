@@ -15,8 +15,9 @@ async def send_passcode_email_job(
 ) -> None:
 
     key = f"jobs:passcode-email:{email_job_id}"
+    sent_key = f"jobs:passcode-email:sent:{email_job_id}"
 
-    if await ctx["redis"].exists(key):
+    if await ctx["redis"].exists(sent_key):
         return
 
     raw_data = await ctx["redis"].get(key)
@@ -38,5 +39,5 @@ async def send_passcode_email_job(
         logger.exception("Passcode email delivery failed")
         raise Retry(defer=retry_delay) from exc
     else:
-        await ctx["redis"].set(key, "1", ex=86_400)
+        await ctx["redis"].set(sent_key, "1", ex=86_400)
         await ctx["redis"].delete(key)
