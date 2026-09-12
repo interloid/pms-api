@@ -78,7 +78,7 @@ async def _cleanup_staging_objects(
 async def upload_product_images(
     ctx: dict[str, Any],
     product_id: str,
-    images: list[dict[str, Any] | ProductImageUploadPayload],
+    images: list[dict[str, Any]],
 ) -> dict[str, Any]:
     if not images:
         return {
@@ -106,16 +106,12 @@ async def upload_product_images(
 
         payload_images: list[ProductImageUploadPayload] = []
 
-        for image in images:
-            if isinstance(
+        payload_images = [
+            ProductImageUploadPayload.model_validate(
                 image,
-                ProductImageUploadPayload,
-            ):
-                payload_image = image
-            else:
-                payload_image = ProductImageUploadPayload.model_validate(image)
-
-            payload_images.append(payload_image)
+            )
+            for image in images
+        ]
 
         primary_count = sum(1 for image in payload_images if image.is_primary)
 

@@ -65,6 +65,7 @@ class WorkerSettings:
             minute=0,
             run_at_startup=False,
             unique=True,
+            max_tries=5,
         )
     ]
 
@@ -74,7 +75,7 @@ class WorkerSettings:
     max_tries = IMAGE_JOB_MAX_TRIES
     job_timeout = 300
     keep_result = 86_400
-    log_results = (False,)
+    log_results = False
 
     on_startup = startup
     on_shutdown = shutdown

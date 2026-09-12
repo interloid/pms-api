@@ -2,12 +2,10 @@ from fastapi import APIRouter, Cookie, Depends, Response, status
 
 from app.api.dependencies import get_auth_service, get_current_user
 from app.core.settings import settings
-from app.exceptions.custom import InternalServerException
 from app.exceptions.global_exception import AUTH_ERROR_RESPONSES
 from app.models.user_model import User
 from app.schemas.auth_schema import (
     LoginRequest,
-    LoginResponse,
     TokenResponse,
 )
 from app.schemas.response import ApiResponse
@@ -22,7 +20,7 @@ router = APIRouter(
 
 @router.post(
     "/login",
-    response_model=ApiResponse[LoginResponse],
+    response_model=ApiResponse[None],
     responses=AUTH_ERROR_RESPONSES,
 )
 async def login(
@@ -30,12 +28,19 @@ async def login(
     response: Response,
     service: AuthService = Depends(get_auth_service),
 ):
-    (result, raw_refresh_token, refresh_max_age) = await service.login(login_data)
+    (access_token, result, raw_refresh_token, refresh_max_age) = await service.login(
+        login_data
+    )
 
-    if result.data is None:
-        raise InternalServerException(
-            message="Login response data is missing",
-        )
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+    )
 
     response.set_cookie(
         key=settings.REFRESH_TOKEN_COOKIE_NAME,

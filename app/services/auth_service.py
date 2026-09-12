@@ -55,7 +55,6 @@ from app.schemas.auth_schema import (
     TokenResponse,
 )
 from app.schemas.response import ApiResponse
-from app.schemas.user_schema import UserResponse
 from app.utils.helpers import utc_now
 
 logger = get_logger(__name__)
@@ -110,21 +109,21 @@ class AuthService:
             expire_days=refresh_expire_days,
         )
 
-        login_response = LoginResponse(
-            access_token=access_token,
-            token_type="bearer",
-            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            user=UserResponse(
-                id=user.id,
-                email=user.email,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                is_active=user.is_active,
-                role=user.role,
-            ),
-        )
+        # login_response = LoginResponse(
+        #     access_token=access_token,
+        #     token_type="bearer",
+        #     expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        #     user=UserResponse(
+        #         id=user.id,
+        #         email=user.email,
+        #         first_name=user.first_name,
+        #         last_name=user.last_name,
+        #         is_active=user.is_active,
+        #         role=user.role,
+        #     ),
+        # )
 
-        return login_response, raw_refresh_token, refresh_max_age
+        return access_token, raw_refresh_token, refresh_max_age
 
     async def login(
         self,
@@ -156,7 +155,7 @@ class AuthService:
             )
 
             (
-                login_response,
+                access_token,
                 raw_refresh_token,
                 refresh_max_age,
             ) = await self._issue_token_pair(
@@ -175,11 +174,11 @@ class AuthService:
             logger.exception("Unexpected error")
             raise
 
-        result = ApiResponse[LoginResponse](
+        result = ApiResponse[None](
             message="Login successful",
-            data=login_response,
+            # data=login_response,
         )
-        return result, raw_refresh_token, refresh_max_age
+        return result, access_token, raw_refresh_token, refresh_max_age
 
     async def _handle_refresh_token(
         self,

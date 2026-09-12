@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_USERNAME: str
     REDIS_PASSWORD: str | None = None
+    REDIS_DB: int = 0
 
     AWS_ACCESS_KEY_ID: str
     AWS_SECRET_ACCESS_KEY: SecretStr | None = None

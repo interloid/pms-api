@@ -1,7 +1,7 @@
-from typing import TypedDict
+from app.schemas.common import BaseSchema
 
 
-class ProductImageUploadPayload(TypedDict):
+class ProductImageUploadPayload(BaseSchema):
     image_id: str
     staging_key: str
     extension: str
