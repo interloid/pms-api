@@ -1,8 +1,10 @@
+import json
 from datetime import timedelta
 from typing import NoReturn
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
+from arq.connections import ArqRedis
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,16 +55,15 @@ from app.schemas.auth_schema import (
     TokenResponse,
 )
 from app.schemas.response import ApiResponse
-from app.schemas.user_schema import UserResponse
-from app.services.email_services import send_passcode_email
 from app.utils.helpers import utc_now
 
 logger = get_logger(__name__)
 
 
 class AuthService:
-    def __init__(self, db: AsyncSession, redis: Redis):
+    def __init__(self, db: AsyncSession, redis: Redis, arq_pool: ArqRedis):
         self.db = db
+        self.arq_pool = arq_pool
         self.user_repo = UserRepository(db)
         self.refresh_token_repo = RefreshTokenRepository(db)
         self.user_identity_repo = UserIdentityRepository(db)
@@ -108,21 +109,21 @@ class AuthService:
             expire_days=refresh_expire_days,
         )
 
-        login_response = LoginResponse(
-            access_token=access_token,
-            token_type="bearer",
-            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            user=UserResponse(
-                id=user.id,
-                email=user.email,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                is_active=user.is_active,
-                role=user.role,
-            ),
-        )
+        # login_response = LoginResponse(
+        #     access_token=access_token,
+        #     token_type="bearer",
+        #     expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        #     user=UserResponse(
+        #         id=user.id,
+        #         email=user.email,
+        #         first_name=user.first_name,
+        #         last_name=user.last_name,
+        #         is_active=user.is_active,
+        #         role=user.role,
+        #     ),
+        # )
 
-        return login_response, raw_refresh_token, refresh_max_age
+        return access_token, raw_refresh_token, refresh_max_age
 
     async def login(
         self,
@@ -154,7 +155,7 @@ class AuthService:
             )
 
             (
-                login_response,
+                access_token,
                 raw_refresh_token,
                 refresh_max_age,
             ) = await self._issue_token_pair(
@@ -173,11 +174,11 @@ class AuthService:
             logger.exception("Unexpected error")
             raise
 
-        result = ApiResponse[LoginResponse](
+        result = ApiResponse[None](
             message="Login successful",
-            data=login_response,
+            # data=login_response,
         )
-        return result, raw_refresh_token, refresh_max_age
+        return result, access_token, raw_refresh_token, refresh_max_age
 
     async def _handle_refresh_token(
         self,
@@ -375,11 +376,26 @@ class AuthService:
             passcode=passcode,
         )
 
-        await send_passcode_email(
-            to_email=email,
-            first_name=user.first_name if user else "User",
-            passcode=passcode,
-            expiry_minutes=5,
+        email_job_id = uuid4().hex
+        email_job_key = f"jobs:passcode-email:{email_job_id}"
+
+        email_data = {
+            "to_email": email,
+            "first_name": user.first_name if user else "User",
+            "passcode": passcode,
+            "expiry_minutes": settings.PASSCODE_EXPIRE_SECONDS // 60,
+        }
+
+        await redis.set(
+            email_job_key,
+            json.dumps(email_data),
+            ex=settings.PASSCODE_EXPIRE_SECONDS,
+        )
+
+        await self.arq_pool.enqueue_job(
+            "send_passcode_email_job",
+            email_job_id,
+            _expires=settings.PASSCODE_EXPIRE_SECONDS,
         )
 
     async def verify_email_passcode(

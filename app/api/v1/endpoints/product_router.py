@@ -105,7 +105,6 @@ async def create_product(
     description: Annotated[str | None, Form()] = None,
     images: Annotated[list[UploadFile] | None, File()] = None,
     product_service: ProductService = Depends(get_product_service),
-    s3_service: S3Service = Depends(get_s3_service),
 ) -> ApiResponse[ProductResponse]:
 
     try:
